@@ -1,5 +1,11 @@
 # Security Policy
 
+## Disclaimer
+
+**This software is provided "as is", without warranty of any kind. Use it at your own risk.**
+
+`project-brain` is pre-1.0 alpha software that orchestrates LLM agents to read and write files, open pull requests, and resolve third-party URIs on your behalf. The authors and contributors assume no responsibility and accept no liability for any direct, indirect, incidental, or consequential damages — including data loss, leaked secrets, corrupted trees, incorrect decisions, or downstream business loss — arising out of the use of this software. You are responsible for reviewing every change the pack produces before merge, for protecting your branches and credentials, and for auditing materialized context before it enters version control. The defense-in-depth mitigations documented below (envelope framing, path-traversal guards, secret-pattern scans) are mitigations, not guarantees. The legally operative terms are in the [LICENSE](LICENSE) (Apache License, Version 2.0); this paragraph is a plain-English summary and in any conflict the LICENSE controls.
+
 ## Supported versions
 
 The v0.9.x series is the current supported branch. Pre-0.9 alpha releases (v0.1 through v0.8) are not maintained; users should upgrade to v0.9.0 or later for all security updates.

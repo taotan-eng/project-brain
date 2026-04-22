@@ -23,7 +23,8 @@ The pack lives in `thoughts/` at your project root — visible, tracked, reviewa
 8. [Extending the pack](#extending-the-pack)
 9. [Runtime portability](#runtime-portability)
 10. [Security](#security)
-11. [Versioning and status](#versioning-and-status)
+11. [Disclaimer](#disclaimer)
+12. [Versioning and status](#versioning-and-status)
 
 ---
 
@@ -351,6 +352,22 @@ Every SKILL.md is written as a standalone instruction sheet that can be followed
 The pack's skills orchestrate LLM agents that read user-supplied content — personas, soft_links, thread notes — and prompt injection is a live concern. Stage 1 of v0.9.0 landed path-traversal guards on `multi-agent-debate` and `materialize-context`, envelope wrapping for persona charters, a charter linter, secret-pattern scans on promotion, and a concurrent-finalize guard to prevent race-condition splits.
 
 For the full threat surface, vulnerability-reporting process, and defense-in-depth expectations, see [SECURITY.md](SECURITY.md).
+
+---
+
+## Disclaimer
+
+**This software is provided "as is", without warranty of any kind, express or implied. Use it at your own risk.**
+
+`project-brain` is an early-stage (pre-1.0), alpha-quality pack that orchestrates LLM agents to read, write, and commit files in your repository, open pull requests on your behalf, and resolve third-party URIs (including `mcp://` connectors) during context materialization. By adopting the pack you accept the following:
+
+- **No fitness for any purpose.** The authors and contributors make no representation that the pack is suitable for production use, regulated environments, safety-critical systems, or any specific workflow. Evaluate it against your own requirements before depending on it.
+- **No liability.** The authors and contributors assume no responsibility and shall not be liable for any direct, indirect, incidental, special, exemplary, or consequential damages arising out of the use or inability to use this software — including, without limitation, data loss, lost commits, leaked secrets, corrupted trees, incorrect decisions, downstream build failures, or any business loss — even if advised of the possibility of such damages.
+- **You are responsible for what the agents do in your repo.** The pack invokes LLM agents that can open PRs, rewrite files, and push branches. You are responsible for reviewing every change before merge, protecting your branches, scoping credentials appropriately, and auditing materialized context and audit snapshots for secrets or third-party content before they enter version control.
+- **Prompt-injection is not solved.** Persona charters, `soft_links` content, and MCP connector responses are free-form text that can attempt to manipulate agent behavior. The pack ships defense-in-depth mitigations (envelope framing, path-traversal guards, secret-pattern scans), but these are mitigations, not guarantees. See [SECURITY.md](SECURITY.md) for the full threat model.
+- **The schema will change.** Until v1.0, frontmatter fields, invariants, and lifecycle transitions may change in breaking ways between releases. Pin to an exact version and plan migrations explicitly.
+
+The legally operative terms are in the [LICENSE](LICENSE) (Apache License, Version 2.0). This section is a plain-English summary; in any conflict, the LICENSE controls.
 
 ---
 
