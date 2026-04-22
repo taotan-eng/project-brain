@@ -10,14 +10,13 @@
       "name": "project-brain",
       "description": "Fourteen cooperating skills that turn unstructured thinking into a durable, reviewable decision tree inside your repo. Threads, leaves, NODE.md indexes, and a project registry — all plain markdown in thoughts/.",
       "version": "1.0.0-rc.3",
-      "author": "Tom <taotan6@gmail.com>",
+      "author": {
+        "name": "Tom",
+        "email": "taotan6@gmail.com"
+      },
       "license": "Apache-2.0",
       "homepage": "https://github.com/taotan-eng/project-brain",
-      "source": {
-        "type": "git",
-        "url": "https://github.com/taotan-eng/project-brain",
-        "subPath": "."
-      },
+      "source": ".",
       "keywords": [
         "skills",
         "project-management",
