@@ -415,7 +415,7 @@ Once `derive-impl-spec` runs, the leaf frontmatter gets `impl_spec: impl-spec.md
 | V-20  | leaf (conditional)   | When a leaf's `source_debate` is set, the path resolves to an existing `debate/round-NN/` directory.                                              |
 | V-21  | any artifact         | Filenames under `thoughts/` match `^[a-zA-Z0-9_-]+(\.[a-zA-Z0-9_-]+)?$` (with exceptions for fixed names like `NODE.md`, `CONVENTIONS.md`, `README.md`, `thread.md`, `index.md`). |
 
-The validator **does not** enforce the project-specific domain taxonomy in § 10.1 — projects can add their own checks by appending to `scripts/verify-tree.py`.
+The validator **does not** enforce the project-specific domain taxonomy in § 10.1 — projects can add their own checks by dropping a Python file into `scripts/verify-tree.d/` (see `skills/verify-tree/SKILL.md` § Extensions for the `check(brain, artifacts, violations)` contract).
 
 ---
 

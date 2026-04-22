@@ -40,7 +40,7 @@ When adding a new skill:
 
 ## The invariant contract
 
-The `scripts/verify-tree.py` validator enforces invariants V-01 through V-21, defined in CONVENTIONS § 9. Each invariant addresses:
+The `scripts/verify-tree.py` shim (delegating to the `scripts/verify_tree/` package) enforces invariants V-01 through V-21, defined in CONVENTIONS § 9. Each invariant addresses:
 
 - Frontmatter consistency (V-01 through V-06).
 - Lifecycle state validity (V-07 through V-10).
@@ -48,7 +48,7 @@ The `scripts/verify-tree.py` validator enforces invariants V-01 through V-21, de
 - Promotion monotonicity and debate sequencing (V-14 through V-16).
 - Naming and reserved-filename rules (V-17 through V-21).
 
-If you add a schema field to CONVENTIONS § 3 or § 4, you usually need to add a corresponding V-NN invariant in `scripts/verify-tree.py` to cover validation of that field.
+If you add a schema field to CONVENTIONS § 3 or § 4, you usually need to add a corresponding V-NN invariant under `scripts/verify_tree/` (the appropriate `invariants_*.py` mixin, wired into `checker.check_all()`) to cover validation of that field.
 
 ## The naming contract
 
@@ -77,7 +77,7 @@ Exit code 0 is success. Non-zero means validation failed; fix violations and try
 - Small skill improvements (fixing typos in descriptions, clarifying process steps).
 - Documentation fixes (README, CONVENTIONS, INSTALL.md).
 - New persona charters in `assets/persona-charters/` for domain-specific debate templates.
-- New V-NN invariants in `scripts/verify-tree.py` for existing schema fields that lack validation.
+- New V-NN invariants in `scripts/verify_tree/invariants_*.py` for existing schema fields that lack validation.
 
 ## What to discuss before writing code
 
