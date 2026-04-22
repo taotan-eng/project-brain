@@ -1,0 +1,5 @@
+promote({{THREAD_SLUG}}): add {{LEAF_SLUG}} to {{DOMAIN}}
+
+{{SHORT_DESCRIPTION}}
+
+Source thread: thoughts/threads/{{THREAD_SLUG}}/

@@ -1,0 +1,5 @@
+build({{LEAF_SLUG}}): stage {{N}} — {{STAGE_NAME}}
+
+{{STAGE_DESCRIPTION}}
+
+Impl-spec: {{IMPL_SPEC_PATH}}

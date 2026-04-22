@@ -1,0 +1,64 @@
+name: verify-brain
+
+on:
+  push:
+    paths:
+      - 'thoughts/**'
+      - 'skills/**'
+      - 'scripts/**'
+      - 'CONVENTIONS.md'
+      - '.github/workflows/verify-brain.yml'
+  pull_request:
+    paths:
+      - 'thoughts/**'
+      - 'skills/**'
+      - 'scripts/**'
+      - 'CONVENTIONS.md'
+
+jobs:
+  verify:
+    name: Verify brain integrity
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python3 -m pip install --upgrade pip
+          pip install PyYAML
+
+      - name: Run verify-tree
+        run: |
+          if [ -d "thoughts" ]; then
+            python3 scripts/verify-tree.py
+          else
+            echo "No thoughts/ directory found; skipping validation."
+          fi
+
+  convention-integrity:
+    name: Check validator executable
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python3 -m pip install --upgrade pip
+          pip install PyYAML
+
+      - name: Verify validator is executable
+        run: python3 scripts/verify-tree.py --help > /dev/null

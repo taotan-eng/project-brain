@@ -1,0 +1,30 @@
+# Python bytecode (verify-tree.py and any helper scripts)
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Editor / IDE noise
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# macOS / Linux cruft
+.DS_Store
+Thumbs.db
+
+# Pack-specific: when the pack is installed into a project, these live inside
+# thoughts/ and are generally NOT tracked — they are materialized context
+# snapshots, audit logs, and local caches. Uncomment the entries below if your
+# project adopts them.
+#
+# thoughts/**/.context/
+# thoughts/.audit-log.jsonl
+# thoughts/.pack-cache/
+
+# If you use the default materialize-context ephemeral output location, it
+# sits under $XDG_CACHE_HOME and is not in your repo — no ignore needed.

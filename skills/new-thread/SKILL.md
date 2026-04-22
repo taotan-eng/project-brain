@@ -1,0 +1,193 @@
+---
+name: new-thread
+description: Scaffold a new private thought thread in the project brain. Creates the thread directory under thoughts/threads/, populates thread.md plus decisions-candidates.md and open-questions.md from templates, and registers the thread in thread-index.md and current-state.md. Use when the user says "start a new thread", "capture an idea", "new thought", "begin thinking about something", or similar.
+version: 0.2.2
+pack: project-brain
+requires:
+  - git
+  - "read:~/.ai/projects.yaml"
+  - "write:[brain-root]"
+---
+
+# new-thread
+
+Scaffolds a fresh private thread so the user can start capturing thoughts. A thread is a directory under `thoughts/threads/<slug>/` containing an initial frontmatter-equipped `thread.md` plus two companion files (`decisions-candidates.md`, `open-questions.md`). The thread is immediately registered in the global `thread-index.md` and `current-state.md` so it is discoverable from the moment it is created.
+
+The skill is deliberately minimal. It does not pre-create optional artifacts (`proposal.md`, `diagrams/`, etc.) — those appear when the thread needs them. Empty scaffolding tends to either be forgotten or filled with filler.
+
+## When to invoke
+
+- "Start a new thread" / "new idea" / "capture a thought"
+- "I want to begin thinking about X"
+- "Scaffold a thread for <topic>"
+- After a conversation where the user says "let's track this as a thread"
+- At the start of any substantive investigation the user expects to revisit
+
+## Inputs
+
+| Name                 | Source                              | Required | Description                                                                           |
+|----------------------|-------------------------------------|----------|---------------------------------------------------------------------------------------|
+| `slug`               | user prompt                         | yes      | Kebab-case identifier per CONVENTIONS.md § 11.1. Short-and-memorable.                 |
+| `title`              | user prompt                         | yes      | Human-readable title; matches the H1 in `thread.md`.                                  |
+| `purpose`            | user prompt                         | yes      | One-line "what this thread is about." Goes into the `thread-index.md` row.            |
+| `owner`              | `git config user.email` or prompt   | yes      | Email or github handle.                                                               |
+| `primary_project`    | user prompt (constrained by aliases)| yes      | Key from `~/.ai/projects.yaml`. If only one alias exists, default to it.              |
+| `tree_domain`        | user prompt                         | no       | Guess at where this thread will eventually promote. Nullable.                         |
+| `related_projects`   | user prompt                         | no       | Other project aliases this thread touches. Default `[]`.                              |
+| `--brain=<path>`     | user prompt or cwd inference        | no       | Absolute path to the brain root. Defaults to the nearest ancestor `thoughts/` directory containing `CONVENTIONS.md`. Use this flag when cwd is outside the brain. |
+| `--dry-run`          | boolean                             | no       | Print the plan (new frontmatter, files to create, commit message) without performing any file writes, git mutations, or audit-log writes. See Process § Dry-run semantics. |
+
+Prompt strategy: ask for `slug` + `title` + `purpose` in one `AskUserQuestion` call with preview-equivalent text. Resolve `owner` automatically from `git config user.email` unless empty. Ask for `primary_project` separately (with options from `~/.ai/projects.yaml`). `tree_domain` and `related_projects` are asked only if the user volunteers or the previous conversation makes them obvious.
+
+## Preconditions
+
+The skill **refuses** if any of these are not met. It does not silently fix.
+
+1. Current working directory is inside a brain root (a `thoughts/` directory containing `CONVENTIONS.md`) or an explicit `--brain=<path>` was given.
+2. `~/.ai/projects.yaml` exists and contains at least one alias.
+3. The resolved `primary_project` alias has a `brain:` path that matches the current brain root.
+4. `thoughts/threads/<slug>/` does not already exist. If it does, skill offers `<slug>-2`, `<slug>-3`, … and asks the user to confirm.
+5. The working tree has no uncommitted changes to `thoughts/thread-index.md` or `thoughts/current-state.md` (to avoid conflicting edits).
+6. `git config user.email` returns a value, or the user explicitly supplies `owner`.
+
+## Process
+
+Each step is atomic. If a step fails, the skill stops and reports — no partial scaffolding is left behind.
+
+1. **Resolve inputs.** Ask the user via `AskUserQuestion` for any missing required input. Resolve `owner` from `git config user.email` if not supplied.
+2. **Validate slug.** Check kebab-case rules (§ 11.1); if malformed, re-prompt. Check for collision; if found, suggest `-2`/`-3` suffix.
+3. **Compute `created_at`.** Run `date -u +%Y-%m-%dT%H:%M:%SZ`.
+4. **Create directory.** `mkdir -p thoughts/threads/<slug>/`.
+5. **Copy templates.** Read `assets/thread-template/thread.md`, `decisions-candidates.md`, `open-questions.md` from the pack. Substitute placeholders (see § Frontmatter flips). Write to the new thread directory.
+6. **Register in `thread-index.md`.** **(Removed in 0.9.0-alpha.2: index files are now autogenerated. See Final step below.)**
+7. **Register in `current-state.md`.** **(Removed in 0.9.0-alpha.2: index files are now autogenerated. See Final step below.)**
+8. **Commit.** Stage the new thread directory for now: `git add thoughts/threads/<slug>/`. The index files will be staged in the Final step.
+9. **Final step — rebuild indexes**
+
+Invoke `verify-tree --rebuild-index` to regenerate `thoughts/thread-index.md` and `thoughts/current-state.md` from the now-updated per-thread frontmatter.
+
+- If the rebuild returns exit 0: proceed to commit; stage both index files along with the thread directory in a single commit: `git add thoughts/threads/<slug>/ thoughts/thread-index.md thoughts/current-state.md && git commit -m "chore(<slug>): scaffold thread — <title>"`.
+- If the rebuild returns exit 1 (source validation failure): abort this skill's commit. Report the thread(s) that failed source validation — they indicate schema violations introduced (or already present) in this operation. Fix the underlying thread before retrying this skill.
+- If the rebuild returns exit 2 (write / verify failure): abort. The live index files are unchanged (atomic write). Report the error; this is typically a filesystem / permissions issue.
+
+Rationale: per CONVENTIONS § 1, `thread-index.md` and `current-state.md` are autogenerated projections of per-thread frontmatter. This skill maintains its invariants by updating the per-thread source; the aggregate view is refreshed as the last step so that (a) index files always reflect post-operation state, and (b) concurrent skills never collide on hand-edits of the aggregate files.
+
+10. **Report.** Return the thread path, the commit SHA, and a prompt to open `thread.md` for initial notes.
+
+### Dry-run semantics
+
+When `--dry-run` is set:
+
+1. **Run all preconditions** (steps 1–6 above), including brain-root existence, projects.yaml availability, slug collision check, and git-state cleanliness. Exit 1 if any precondition fails.
+2. **Compute the full plan:** print the new thread directory path, the three files that would be created (`thread.md`, `decisions-candidates.md`, `open-questions.md`), the resolved frontmatter placeholders (slug, title, owner, created_at, etc.), and the commit message.
+3. **Invoke `verify-tree --rebuild-index --dry-run`** to surface any index-rebuild failures before committing (step 9). If that fails, print the rebuild error and exit 1.
+4. **Write NOTHING to disk:** neither the thread directory, nor `thread-index.md`, `current-state.md`, nor the audit log.
+5. **Invoke NO git mutations:** no `git add`, no `git commit`. Read-only git operations (e.g., `git status`, `git config`) are allowed.
+6. **Exit 0** if the plan would succeed end-to-end, **exit 1** if any precondition or rebuild-dry-run check failed, **exit 2** on unexpected error.
+
+Print the plan to stdout in a numbered list format (e.g., "1. Create directory thoughts/threads/<slug>/", "2. Write thread.md with status: active", "3. Write decisions-candidates.md", "4. Run verify-tree --rebuild-index --dry-run", "5. Commit: chore(<slug>): scaffold thread — <title>"). When exiting 1, also print the failing precondition or rebuild error.
+
+## Side effects
+
+### Files written or modified
+
+| Path (relative to brain root)     | Operation | Notes                                   |
+|------------------------------------|-----------|------------------------------------------|
+| `threads/<slug>/thread.md`         | create    | From `assets/thread-template/thread.md`  |
+| `threads/<slug>/decisions-candidates.md` | create | From template                         |
+| `threads/<slug>/open-questions.md` | create    | From template                            |
+| `thread-index.md`                  | edit or create | Appends new "Active" row             |
+| `current-state.md`                 | edit or create | Appends new "Active threads" bullet  |
+
+Brain root is `<project>/thoughts/` (see CONVENTIONS.md § 1). Paths in this table are relative to that directory; the shell-level paths in § Process retain the `thoughts/` prefix because those commands run from project root.
+
+### Git operations
+
+| Operation          | Trigger | Notes                                                  |
+|--------------------|---------|---------------------------------------------------------|
+| `git add …`        | step 8  | Staging the new thread + index updates                  |
+| `git commit -m …`  | step 8  | Uses the message in `assets/commit-templates/` (scope: `<slug>`, type: `chore`) |
+
+No branch is created; thread work happens on `main` by default (§ 11.4).
+
+When `--dry-run` is set: NO side effects. Stdout output only.
+
+### External calls
+
+None. Purely local filesystem + git operations.
+
+## Outputs
+
+**User-facing summary.** A short message with:
+
+- The created thread path (as a `computer://` link).
+- The commit SHA.
+- A next-step suggestion: "Open `thread.md` and replace the initial comment with what you're thinking about."
+
+**State passed forward.** The skill's return value to any calling workflow includes:
+
+- `thread_path` — absolute path to the thread directory.
+- `thread_slug` — the final slug (after collision resolution).
+- `thread_commit` — SHA of the scaffolding commit.
+
+## Frontmatter flips
+
+Placeholders substituted in templates at step 5. The table below maps template placeholders to resolved values.
+
+| File | Placeholder | Source |
+|------|-------------|--------|
+| `thread.md` | `{{SLUG}}` | input `slug` |
+| `thread.md` | `{{TITLE}}` | input `title` |
+| `thread.md` | `{{CREATED_AT}}` | step 3 |
+| `thread.md` | `{{OWNER}}` | input `owner` |
+| `thread.md` | `{{PRIMARY_PROJECT}}` | input `primary_project` |
+| `thread.md` | `{{TREE_DOMAIN_OR_NULL}}` | input `tree_domain` or `null` |
+
+No existing artifact's frontmatter is modified by this skill — `new-thread` only creates new files.
+
+When `--dry-run` is set: no files are written; the frontmatter substitutions are described in the plan output instead.
+
+## Postconditions
+
+- `thoughts/threads/<slug>/` exists with three files, all with valid frontmatter.
+- `thread.md` has `status: active` and `maturity: exploring`.
+- `thread-index.md` and `current-state.md` both reference the new thread (autogenerated).
+- A single commit (SHA returned) contains all of the above.
+- `verify-tree` (if installed) passes without errors on the newly-created thread.
+
+## Failure modes
+
+| Failure                                | Cause                                                       | Response                        |
+|----------------------------------------|-------------------------------------------------------------|----------------------------------|
+| Brain root not found                   | No `thoughts/CONVENTIONS.md` up the tree; no `--brain` given | refuse — prompt user to `init-project-brain` |
+| `~/.ai/projects.yaml` missing or empty | Pack not fully initialized                                  | refuse — prompt user to `init-project-brain` |
+| Slug collision                         | `thoughts/threads/<slug>/` already exists                   | prompt — suggest `<slug>-2`, `<slug>-3` |
+| Invalid slug characters                | Fails § 11.1 regex                                          | prompt — re-ask for slug        |
+| Dirty working tree on index files      | Uncommitted edits to unrelated paths (not thread-local)     | refuse — ask user to stash or commit |
+| `git config user.email` empty and no `owner` given | Git not configured                                | prompt — ask for owner          |
+| Template file missing from pack        | Pack installation broken                                    | refuse — report broken pack     |
+| Rebuild source-validation failure      | Thread frontmatter schema violations                        | refuse — report violating thread; user must repair before retrying |
+| Rebuild write failure                  | Filesystem / permissions issue                             | refuse — live index files unchanged (atomic); report error |
+| `--dry-run` plan shows a precondition failure | Any precondition failed during dry-run | skill exits 1 after printing the plan and the failing precondition. The plan is still useful: the user sees both what was intended and why it wouldn't work. |
+
+## Related skills
+
+- **Precedes:** `promote-thread-to-tree` — eventually consumes this thread's `decisions-candidates.md` to produce leaves.
+- **Precedes:** `materialize-context` — may be called during thread maturation to pull in related material for the author.
+- **Typically followed by:** *(none — the user writes in the thread for hours or days before the next skill)*
+- **Compatible with:** `verify-tree` — can be invoked after scaffolding to confirm no validator issues.
+
+## Asset dependencies
+
+- `assets/thread-template/thread.md`
+- `assets/thread-template/decisions-candidates.md`
+- `assets/thread-template/open-questions.md`
+- `assets/commit-templates/promote.txt` *(not used directly; new-thread uses a `chore(<slug>):` message)*
+
+## Versioning
+
+**0.2.2** — Added `--dry-run` flag specification with full semantics contract, including exit codes 0/1/2 (2 reserved for unexpected errors).
+
+**0.2.0** — Stage 2 of v0.9.0: index-file updates moved to centralized `verify-tree --rebuild-index` final step; previous inline edits removed.
+
+**0.1.0** — initial draft. Bump to 0.2.0 if any input, output, or precondition changes.

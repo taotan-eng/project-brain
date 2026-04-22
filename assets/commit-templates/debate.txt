@@ -1,0 +1,5 @@
+debate({{LEAF_SLUG}}): round-{{ROUND_NUM}} {{ACTION}}
+
+{{SHORT_DESCRIPTION}}
+
+# ACTION ∈ {open, feedback-in, tryouts, defender, synthesizer, patches, merge}

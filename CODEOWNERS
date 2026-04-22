@@ -1,0 +1,26 @@
+# project-brain pack ownership
+#
+# This file specifies ownership of critical project-brain files and directories.
+# Teams adopting this pack in their own repository should REPLACE @project-brain-maintainers
+# with their own team handle (e.g., @myteam/infrastructure). If you don't want CODEOWNERS
+# coverage, you can delete this file entirely.
+#
+
+# Core pack definition and schema
+/CONVENTIONS.md           @project-brain-maintainers
+/README.md                @project-brain-maintainers
+/CONTRIBUTING.md          @project-brain-maintainers
+/SECURITY.md              @project-brain-maintainers
+/LICENSE                  @project-brain-maintainers
+
+# Validator and tooling
+/scripts/                 @project-brain-maintainers
+
+# Assets, templates, and personas
+/assets/                  @project-brain-maintainers
+
+# Individual skills
+/skills/                  @project-brain-maintainers
+
+# Workflows and CI configuration
+/.github/                 @project-brain-maintainers
