@@ -1,0 +1,24 @@
+{
+  "name": "project-brain",
+  "version": "0.9.0-alpha.4",
+  "description": "A portable skill pack that turns unstructured thinking into a durable decision tree. Ships fourteen cooperating skills for moving an idea from 'I was thinking about X' to a merged, reviewed, auditable decision in your repo.",
+  "author": {
+    "name": "Tom",
+    "email": "taotan6@gmail.com"
+  },
+  "homepage": "https://github.com/<owner>/project-brain",
+  "repository": "https://github.com/<owner>/project-brain",
+  "license": "Apache-2.0",
+  "keywords": [
+    "skills",
+    "project-management",
+    "decision-log",
+    "knowledge-management",
+    "thoughts",
+    "decision-tree",
+    "ADR",
+    "architecture-decision-records",
+    "brain",
+    "productivity"
+  ]
+}
