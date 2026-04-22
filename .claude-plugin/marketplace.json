@@ -16,7 +16,10 @@
       },
       "license": "Apache-2.0",
       "homepage": "https://github.com/taotan-eng/project-brain",
-      "source": ".",
+      "source": {
+        "source": "github",
+        "repo": "taotan-eng/project-brain"
+      },
       "keywords": [
         "skills",
         "project-management",
