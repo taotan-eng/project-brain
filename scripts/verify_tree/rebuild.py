@@ -44,7 +44,23 @@ def rebuild_index(brain: Path, dry_run: bool) -> int:
             if tm.is_file():
                 threads.append(load_artifact(tm, brain))
 
-    min_checker = Checker(brain, threads)
+    # Also collect tree leaves — the "Leaves building" section in
+    # current-state.md derives from them, so a malformed leaf can corrupt
+    # the rebuilt snapshot just like a malformed thread corrupts the index.
+    # Validate both before touching the aggregate files.
+    leaves: list[Artifact] = []
+    tree_dir = thoughts / "tree"
+    if tree_dir.is_dir():
+        for p in tree_dir.rglob("*.md"):
+            if p.name == "NODE.md":
+                continue
+            # Skip debate/impl-spec/etc. sub-files; they're not "leaves".
+            parts = p.relative_to(thoughts).parts
+            if "debate" in parts:
+                continue
+            leaves.append(load_artifact(p, brain))
+
+    min_checker = Checker(brain, threads + leaves)
     for a in threads:
         min_checker.check_parse(a)
         min_checker.check_v01_title_matches_h1(a)
@@ -52,10 +68,13 @@ def rebuild_index(brain: Path, dry_run: bool) -> int:
         min_checker.check_v07_thread_status_maturity(a)
         min_checker.check_v08_promoted_parity(a)
         min_checker.check_v12_parked_fields(a)
+    for a in leaves:
+        min_checker.check_parse(a)
+        min_checker.check_v06_required_fields(a)
     errors = [v for v in min_checker.violations if v.severity == "error"]
     if errors:
         sys.stderr.write(
-            "refusing to rebuild: source thread files have validation errors.\n"
+            "refusing to rebuild: source files have validation errors.\n"
         )
         for v in errors:
             sys.stderr.write(f"  {v.file}:{v.line}: [{v.code}] {v.message}\n")

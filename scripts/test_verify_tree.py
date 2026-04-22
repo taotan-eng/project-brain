@@ -676,6 +676,20 @@ class InvariantTests(BaseTest):
 
     # N-03
     def test_n03_wrong_dir_case(self):
+        # Case-insensitive filesystems (macOS default HFS+/APFS, Windows NTFS)
+        # treat ``Threads`` and ``threads`` as the same directory, so the
+        # fixture's mkdir would collide with the one make_brain() already
+        # created. Skip on those; N-03 is enforced in CI (ubuntu/ext4) which
+        # is where the regression would land anyway.
+        probe_a = self.tmp_path / "casecheck"
+        probe_a.mkdir()
+        try:
+            (self.tmp_path / "CASECHECK").mkdir()
+        except FileExistsError:
+            self.skipTest(
+                "filesystem is case-insensitive; N-03 fixture requires "
+                "case-sensitive FS (e.g. ext4 in CI)."
+            )
         brain = make_brain(self.tmp_path)
         (brain / "Threads").mkdir()
         _, data, *_ = self._run(brain)

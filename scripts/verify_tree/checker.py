@@ -112,19 +112,22 @@ class Checker(
         # Scope-aware fallback: if we're running under --path or similar
         # and the threads/ dir wasn't walked, probe the filesystem directly
         # so V-14 doesn't false-positive just because the referent is
-        # outside the current scope.
+        # outside the current scope. Parse the thread's frontmatter fully
+        # (not just {id: slug}) so downstream invariants like V-09
+        # 'building' — which requires thread.status == 'active' — don't
+        # false-positive on the stub either.
         if hasattr(self, "brain"):
+            from .discovery import load_artifact  # local import: avoid cycle
             for loc in ("threads", "archive"):
                 fs_path = self.brain / loc / slug / "thread.md"
                 if fs_path.is_file():
-                    # Minimal stub so out-of-scope V-14/V-09 checks can
-                    # confirm existence without re-parsing.
-                    return Artifact(
-                        path=fs_path,
-                        rel_path=f"{loc}/{slug}/thread.md",
-                        kind="thread",
-                        frontmatter={"id": slug},
-                    )
+                    art = load_artifact(fs_path, self.brain)
+                    # classify() keys off rel_path so the kind should already
+                    # be 'thread' for threads/<slug>/thread.md; coerce
+                    # defensively in case of an odd archive layout.
+                    if art.kind != "thread":
+                        art.kind = "thread"
+                    return art
         return None
 
     def _find_by_id_or_path(self, ref: str) -> Optional[Artifact]:

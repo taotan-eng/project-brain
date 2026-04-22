@@ -98,6 +98,36 @@ def main(argv: Optional[list[str]] = None) -> int:
             return EXIT_INVOCATION
         return rebuild_index(brain, args.dry_run)
 
+    # Validate that the scope target (if any) actually exists. Per contract
+    # a missing --thread / --path / --staging target is an invocation error
+    # (exit 2), NOT a clean pass with zero artifacts.
+    if args.staging:
+        target = brain / "threads" / args.staging / "tree-staging"
+        if not target.is_dir():
+            sys.stderr.write(
+                f"error: --staging target not found: {target} "
+                f"(expected threads/{args.staging}/tree-staging/ under brain).\n"
+            )
+            return EXIT_INVOCATION
+    elif args.thread:
+        found = any(
+            (brain / loc / args.thread).is_dir()
+            for loc in ("threads", "archive")
+        )
+        if not found:
+            sys.stderr.write(
+                f"error: --thread target not found: no threads/{args.thread}/ "
+                f"or archive/{args.thread}/ under brain {brain}.\n"
+            )
+            return EXIT_INVOCATION
+    elif args.path:
+        target = brain / args.path
+        if not target.exists():
+            sys.stderr.write(
+                f"error: --path target not found: {target}.\n"
+            )
+            return EXIT_INVOCATION
+
     # Validation path.
     artifacts: list[Artifact] = []
     for abs_path in iter_scoped_paths(brain, args.thread, args.path, args.staging):

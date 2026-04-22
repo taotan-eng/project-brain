@@ -144,7 +144,11 @@ def iter_scoped_paths(
         for dirpath, dirnames, filenames in os.walk(root):
             dirnames[:] = [d for d in dirnames if not d.startswith(".")]
             for fn in filenames:
-                if fn.endswith(".md"):
+                # Case-insensitive so wrong-cased names like ``Thread.md``
+                # or ``NODE.MD`` still reach N-02 (reserved-filename casing).
+                # Non-reserved files with unusual casing fall through to
+                # kind='unknown' and are exempt from V-06.
+                if fn.lower().endswith(".md"):
                     yield Path(dirpath) / fn
 
 
