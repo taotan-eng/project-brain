@@ -1,4 +1,4 @@
-# Python bytecode (verify-tree.py and any helper scripts)
+# Python bytecode (the verify-tree.py shim, the verify_tree/ package, and any helper scripts)
 __pycache__/
 *.py[cod]
 *$py.class
@@ -28,3 +28,4 @@ Thumbs.db
 
 # If you use the default materialize-context ephemeral output location, it
 # sits under $XDG_CACHE_HOME and is not in your repo — no ignore needed.
+sandbox/
