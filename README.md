@@ -45,6 +45,22 @@ Every skill in the pack reads `CONVENTIONS.md` at the brain root as its source o
 
 If you want to see what the pack does before installing, jump to [QUICKSTART.md](QUICKSTART.md) — it walks through a hiring-decision example end-to-end without requiring you to install anything.
 
+### Install as a Claude Code / Cowork plugin (recommended)
+
+The pack ships as a native Claude plugin. One-time setup per user, then the 14 skills are available in every project you open.
+
+**Claude Code CLI:**
+
+```sh
+claude plugin marketplace add taotan-eng/project-brain
+claude plugin install project-brain@project-brain
+claude plugin list         # confirms project-brain@project-brain is enabled
+```
+
+**Claude Cowork (desktop app):** open Settings → Plugins, add the marketplace by URL `https://github.com/taotan-eng/project-brain`, then install `project-brain`. (See also [claude.com/plugins](https://claude.com/plugins).)
+
+Once installed, skip ahead to the first-run scaffold step — the plugin install handles Step 1 + Step 2 of the manual procedure for you. You only need to run `init-project-brain` against your project to get `thoughts/` scaffolded.
+
 ### Install by pointing an AI agent at the repo
 
 Copy-paste one of the prompts below into your AI coding assistant (Claude Code, Claude Desktop / Cowork, Codex, Cursor, Gemini CLI, Aider, or any agent that can clone a repo and write files). Replace `<repo-url>` with the pack's GitHub URL.

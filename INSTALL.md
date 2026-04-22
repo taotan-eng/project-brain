@@ -25,7 +25,24 @@ mkdir -p ~/.ai
 
 ## Install procedure
 
-### Step 1 — Obtain the pack
+### The fastest path — Claude plugin install
+
+If you're on Claude Code 2.1+ or Claude Cowork, the pack installs as a native plugin and skips Steps 1 and 2 below entirely:
+
+```sh
+# Claude Code CLI
+claude plugin marketplace add taotan-eng/project-brain
+claude plugin install project-brain@project-brain
+claude plugin list         # project-brain@project-brain should be enabled
+```
+
+For Claude Cowork, install via Settings → Plugins (add marketplace URL `https://github.com/taotan-eng/project-brain`, then install `project-brain`), or via [claude.com/plugins](https://claude.com/plugins).
+
+After a successful plugin install, jump straight to **Step 3 — Run `init-project-brain`**. The plugin runtime has placed the 14 skills where it finds them; you do **not** need to `cp -R` anything.
+
+**If your runtime does not support plugins** (older Claude Code, Codex, Cursor, Gemini CLI, Aider, Ollama, etc.), follow the manual procedure below.
+
+### Step 1 — Obtain the pack (manual install only)
 
 ```sh
 # Pick a scratch location. Anywhere outside the project you're installing into.
@@ -36,7 +53,7 @@ git clone <repo-url> "$PACK_SRC"
 
 Replace `<repo-url>` with the pack's GitHub URL.
 
-### Step 2 — Place the skills where your runtime will find them
+### Step 2 — Place the skills where your runtime will find them (manual install only)
 
 The pack ships as `skills/`, `assets/`, `scripts/`, and `CONVENTIONS.md`. Where these go depends on which agent runtime you are installing into. Pick **exactly one** of the following layouts:
 
