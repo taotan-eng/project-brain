@@ -27,7 +27,6 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-          cache: 'pip'
 
       - name: Install dependencies
         run: |
@@ -39,8 +38,11 @@ jobs:
           if [ -d "thoughts" ]; then
             python3 scripts/verify-tree.py
           else
-            echo "No thoughts/ directory found; skipping validation."
+            echo "No thoughts/ directory found (pack repo, not a brain); skipping brain validation."
           fi
+
+      - name: Run validator unit tests
+        run: python3 -m unittest discover -s scripts -p 'test_*.py' -v
 
   convention-integrity:
     name: Check validator executable
@@ -53,7 +55,6 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-          cache: 'pip'
 
       - name: Install dependencies
         run: |
