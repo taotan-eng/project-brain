@@ -648,6 +648,30 @@ class InvariantTests(BaseTest):
 
     # N-02
     def test_n02_wrong_casing(self):
+        # Case-insensitive filesystems (macOS default HFS+/APFS, Windows NTFS)
+        # cannot host both ``thread.md`` and ``Thread.md`` in the same
+        # directory: writing the wrong-cased name silently clobbers the
+        # lowercase file (its disk name stays lowercase), so the fixture
+        # never produces the scenario N-02 detects. Skip on those; CI
+        # (ubuntu / ext4) is where the regression would land anyway.
+        probe = self.tmp_path / "n02_casecheck"
+        probe.mkdir()
+        (probe / "file.md").write_text("a")
+        try:
+            (probe / "File.md").write_text("b")
+            # If both files coexist on disk, FS is case-sensitive.
+            names = sorted(p.name for p in probe.iterdir())
+            if names != ["File.md", "file.md"]:
+                self.skipTest(
+                    "filesystem is case-insensitive; N-02 fixture requires "
+                    "case-sensitive FS (e.g. ext4 in CI)."
+                )
+        except (FileExistsError, OSError):
+            self.skipTest(
+                "filesystem is case-insensitive; N-02 fixture requires "
+                "case-sensitive FS (e.g. ext4 in CI)."
+            )
+
         brain = make_brain(self.tmp_path)
         make_thread(brain, "alpha")
         wrong = brain / "threads" / "alpha" / "Thread.md"
@@ -732,15 +756,20 @@ class RebuildIndexTests(BaseTest):
         self.assertFalse((brain / "current-state.md").exists())
 
     def test_rebuild_index_deterministic(self):
+        # Rebuild output is byte-stable on an unchanged brain — the
+        # banner timestamp is now derived from source frontmatter
+        # (high-water mark), not datetime.now().
         brain = make_brain(self.tmp_path)
         make_thread(brain, "alpha")
         make_thread(brain, "beta")
         run_validator(brain, "--rebuild-index", as_json=False)
         content1 = (brain / "thread-index.md").read_text()
+        state1 = (brain / "current-state.md").read_text()
         run_validator(brain, "--rebuild-index", as_json=False)
         content2 = (brain / "thread-index.md").read_text()
-        strip = lambda t: "\n".join(l for l in t.split("\n") if "Last rebuild" not in l)
-        self.assertEqual(strip(content1), strip(content2))
+        state2 = (brain / "current-state.md").read_text()
+        self.assertEqual(content1, content2)
+        self.assertEqual(state1, state2)
 
     def test_rebuild_index_refuses_on_bad_source(self):
         brain = make_brain(self.tmp_path)
