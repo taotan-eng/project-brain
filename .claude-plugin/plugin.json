@@ -6,8 +6,8 @@
     "name": "Tom",
     "email": "taotan6@gmail.com"
   },
-  "homepage": "https://github.com/<owner>/project-brain",
-  "repository": "https://github.com/<owner>/project-brain",
+  "homepage": "https://github.com/taotan-eng/project-brain",
+  "repository": "https://github.com/taotan-eng/project-brain",
   "license": "Apache-2.0",
   "keywords": [
     "skills",
