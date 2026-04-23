@@ -174,11 +174,11 @@ fi
 # ---------------------------------------------------------------------------
 
 echo "Created thread '${SLUG}' at ${THREAD_DIR}."
-echo "  files: thread.md, decisions-candidates.md, open-questions.md"
-echo "  indexes rebuilt: thread-index.md, current-state.md"
 if [[ "$OWNER" == "TODO@example.com" ]]; then
   echo "  owner = TODO@example.com placeholder; replace when ready."
 fi
-echo "  not committed — run 'git add . && git commit' yourself when ready."
+# No git-commit reminder at capture time by design: capture/refine/debate
+# are all git-free per rc4. Mentioning git here cues a workflow model the
+# pack has intentionally moved away from. Git enters at promote-time.
 
 exit 0

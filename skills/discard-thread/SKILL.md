@@ -48,6 +48,20 @@ The skill **refuses** if any of these are not met.
 
 ## Process
 
+> ### ⛔️ HARD CONSTRAINT FOR THE AGENT
+>
+> **All mechanical file operations happen inside `scripts/discard-thread.sh` — a single Bash tool call.** You, the agent, **MUST NOT**:
+>
+> - Read the existing thread.md via `Read` to eyeball the frontmatter. The script does that.
+> - Run `Write .../thread.md` with edited frontmatter yourself as separate tool calls. The script does it.
+> - Run `mv threads/<slug> archive/<slug>` yourself as a Bash call. The script does the move.
+> - Invoke `verify-tree --rebuild-index` yourself. The script runs it internally after the move + flip.
+>
+> **You MUST call `scripts/discard-thread.sh` exactly once, with appropriate flags, and nothing else in the mechanical path.** Each individual tool call triggers a permission prompt + full-content diff in the agent UI. The script completes in ~110ms.
+>
+> If you find yourself typing any of: `Read .../threads/`, `Write .../threads/`, `Edit .../thread.md` — STOP. You are improvising. The single correct Bash call is described below.
+
+
 Each step is atomic. Failure at step N leaves the tree in whatever state it was after step N-1.
 
 1. **Resolve inputs.** Infer `thread_slug` from cwd. Prompt for `discard_reason`.

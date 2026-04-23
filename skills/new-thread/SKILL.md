@@ -50,48 +50,62 @@ The skill **refuses** if any of these are not met. It does not silently fix.
 
 ## Process
 
-Each step is atomic. If a step fails, the skill stops and reports — no partial scaffolding is left behind.
+> ### ⛔️ HARD CONSTRAINT FOR THE AGENT
+>
+> **All mechanical scaffolding happens inside `scripts/new-thread.sh` — a single Bash tool call.** You, the agent, **MUST NOT**:
+>
+> - Read template files yourself (`Read assets/thread-template/...`). The script reads them.
+> - Write scaffold files yourself (`Write .../thread.md`, `Write .../decisions-candidates.md`, `Write .../open-questions.md`). The script writes them.
+> - Run `mkdir` yourself as a separate Bash call. The script does `mkdir`.
+> - Invoke `verify-tree --rebuild-index` yourself. The script runs it internally after writing the templates.
+> - "Write all the thread files in parallel." No. Call the script, nothing else.
+>
+> **You MUST call `scripts/new-thread.sh` exactly once, with appropriate flags, and nothing else in the mechanical-scaffolding path.** Each individual tool call triggers a permission prompt + a full-content diff render in the agent UI. The script completes in ~90ms.
+>
+> If you find yourself typing any of: `Read .../assets/thread-template/`, `Write .../threads/<slug>/`, `mkdir .../threads/<slug>` — STOP. You are improvising. The single correct Bash call is in Step 2 below.
 
-1. **Resolve inputs.** Ask the user via `AskUserQuestion` for any missing required input (slug, title, purpose). Resolve `owner` from `--owner <email>` if supplied; otherwise use the literal placeholder `TODO@example.com`. Do NOT invoke `git config user.email`, do NOT read `$EMAIL` / `$USER` env vars — rc4 keeps pre-promote skills shell-free.
+Steps in order:
 
-2. **Scaffold — one shell call, sub-second.** Invoke the pack's bundled scaffolding script in a single Bash tool call:
+1. **Resolve inputs (pre-script, no file ops).** Ask the user via `AskUserQuestion` for any missing required content: `slug`, `title`, `purpose`. Pull `primary_project` from the brain's `config.yaml` (one Read of a tiny file). Resolve `owner`: `--owner <email>` flag → use it verbatim; otherwise use the literal placeholder `TODO@example.com`. **Do NOT invoke `git config user.email`, do NOT read `$EMAIL` or `$USER`, do NOT run any shell command to guess** — rc4 keeps pre-promote skills 100% shell-free except the single script call in Step 2.
+
+2. **Call the scaffolding script. This is the ONLY mechanical tool call.**
+
+   Bash tool call (one invocation, one permission prompt):
 
    ```bash
    scripts/new-thread.sh \
-     --brain=<absolute path to the brain, e.g. /Users/alice/my-app/project-brain> \
-     --slug=<slug>            \
-     --title='<title>'        \
-     --purpose='<purpose>'    \
-     --primary-project=<alias> \
-     [--owner=<email>]        \  # only if --owner was passed
-     [--tree-domain=<slug>]   \  # only if the user volunteered one
-     [--related-projects=<csv>]
+     --brain='<absolute brain path>' \
+     --slug='<slug>' \
+     --title='<title>' \
+     --purpose='<purpose>' \
+     --primary-project='<alias>' \
+     [--owner='<email>']        \   # only if --owner was supplied
+     [--tree-domain='<slug>']   \   # only if user volunteered one
+     [--related-projects='<csv>']
    ```
 
-   The script (see `scripts/new-thread.sh`) does everything:
+   **Do not call any other tool before this bash call** except the input-resolution AskUserQuestion and the one Read of `config.yaml` for `primary_project`. In particular: do not Read template files "to understand what the script will write" — the script is self-contained, tested, and ~100× faster than orchestrating individual tool calls.
 
-   - Validates the slug (§ 11.1) and refuses if the thread directory already exists.
+   What the script does internally (for your understanding only — you don't replicate this):
+
+   - Validates the slug (§ 11.1) and refuses if `threads/<slug>/` already exists.
    - `mkdir -p <brain>/threads/<slug>/`.
-   - Copies `<pack>/assets/thread-template/{thread.md, decisions-candidates.md, open-questions.md}` with placeholder substitution (`{{SLUG}}`, `{{TITLE}}`, `{{PURPOSE}}`, `{{CREATED_AT}}`, `{{OWNER}}`, `{{PRIMARY_PROJECT}}`, `{{TREE_DOMAIN_OR_NULL}}`).
-   - Runs `verify-tree --rebuild-index` at the end so `thread-index.md` and `current-state.md` reflect the new thread immediately.
+   - Copies + substitutes three template files: `thread.md`, `decisions-candidates.md`, `open-questions.md`.
+   - Runs `verify-tree --rebuild-index` so `thread-index.md` and `current-state.md` stay in sync.
+   - Prints one success line + an optional placeholder hint to stdout.
 
-   **One permission prompt and ~90ms of execution**, replacing the ~6 individual file-tool calls the skill previously orchestrated (1 mkdir + 3 reads + 3 writes + 1 Bash rebuild). Claude Code's Write tool renders a full file diff for each write; one bash call bypasses all of that.
+3. **Append session transcript (optional, only if `transcript_logging=on`).** One Edit-tool append to `<brain>/threads/<slug>/transcript.md` following CONVENTIONS § 2.5.1 format. Session content is naturally dynamic; the script scaffolded everything mechanical.
 
-3. **Append session transcript** (if `transcript_logging=on` in `<brain>/config.yaml`, default). Append this session's transcript — following the entry schema in CONVENTIONS § 2.5.1 — to `<brain>/threads/<slug>/transcript.md`. (Session content is naturally dynamic; the script handles scaffolding, the skill handles the running log.)
-
-4. **Report.** Passthrough the script's terse one-liner. At verbosity=terse the full output is:
+4. **Report.** Passthrough the script's stdout verbatim. Do not add any of your own commentary about git, commits, or "next steps". At verbosity=terse the full user-visible output is exactly:
 
     ```
     Created thread '<slug>' at <brain>/threads/<slug>.
-      files: thread.md, decisions-candidates.md, open-questions.md
-      indexes rebuilt: thread-index.md, current-state.md
-      owner = TODO@example.com placeholder; replace when ready.        # only if placeholder was used
-      not committed — run 'git add . && git commit' yourself when ready.
+      owner = TODO@example.com placeholder; replace when ready.     # only if placeholder was used
     ```
 
-**Git deferred:** This skill does NOT invoke git. The user runs `git add` and `git commit` themselves to preserve the skill's file-operation scope.
+    Do not mention git, commits, or "run git add". Capture is git-free; promote-time is where git shows up. Telling the user about git at capture cues a mental model this pack has intentionally moved away from.
 
-**On failure**: if the script exits non-zero, the thread directory may exist but the aggregate indexes are stale. The script's error message tells the user exactly what command to re-run. No partial-state recovery — this is a pre-promote skill, nothing is committed.
+**On failure**: if the script exits non-zero, the error message names the specific precondition. Report it verbatim. No partial-state recovery — capture is git-free, nothing is committed, and re-invoking with a different `--slug` is always safe.
 
 ### Dry-run semantics
 

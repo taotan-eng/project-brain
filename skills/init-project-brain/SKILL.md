@@ -88,114 +88,67 @@ The skill **refuses** if any of these are not met. Preconditions 1, 3, 6 apply *
 
 ## Process
 
-Each step is atomic. A failure at step N leaves the filesystem in whatever state it was after step N-1; no partial scaffolds are left committed.
+> ### ⛔️ HARD CONSTRAINT FOR THE AGENT
+>
+> **All mechanical scaffolding happens inside `scripts/init-brain.sh` — a single Bash tool call.** You, the agent, **MUST NOT**:
+>
+> - Read template files yourself (`Read assets/...`, `Glob assets/...`). The script reads them.
+> - Write scaffold files yourself (`Write project-brain/CONVENTIONS.md`, `Write project-brain/config.yaml`, etc.). The script writes them.
+> - Run `mkdir` or `mv` yourself as separate Bash calls. The script does `mkdir`, and the script handles backup-rename under `--force`.
+> - Create `tree/engineering/` or any other domain subdirectory. Tree stays flat at init. Domain dirs appear on demand when `promote-thread-to-tree` lands the first decision there.
+> - "Write all the scaffold files in parallel." No. Call the script, nothing else.
+>
+> **You MUST call `scripts/init-brain.sh` exactly once, with appropriate flags, and nothing else in the mechanical-scaffolding path.** Every departure from this cascades into a 6-minute session of individual permission prompts. The script completes in under 100ms.
+>
+> If you find yourself typing any of: `Read assets/`, `Write .../project-brain/`, `mkdir .../project-brain/`, `mv .../project-brain project-brain.bak` — STOP. You are improvising. The single correct Bash call is in Step 3 below.
 
-1. **Resolve inputs.**
-    - **Step 1a — detect project home (zero prompts in the common case).** Call `detect_host_project_root()` from `scripts/verify_tree/config.py`. It returns `(path, source)` where `source` is one of: `env:PROJECT_BRAIN_HOME`, `cowork-workspace`, `codex-project`, `claude-project`, `git-root`, `cwd`. Decision tree:
-        - If `--home=<path>` flag is supplied: use it verbatim. No prompt. `source = "flag:--home"`.
-        - Else call `detect_host_project_root()`:
-            - If `source ∈ {env:PROJECT_BRAIN_HOME, cowork-workspace, codex-project, claude-project, git-root}` — **proceed silently**. Do not prompt. Emit a single confirmation line in the terse report: `Project home: <path> (detected: <source>)`.
-            - If `source == "cwd"` — detection fell all the way through. The ambiguity is real. Present one AskUserQuestion: `"No host project root detected. Project home directory?"` with `<cwd>` as the default. User accepts default or types an alternative absolute path.
-        - With `--interactive`: fold this into the full prompt set; still show the detected value as the default.
-    - From the resolved `project_home`, compute `brain_path = <project_home>/project-brain`. This is pure string manipulation — no shell call.
-    - **Step 1b — derive from `project_home` (no shell):** `brain_path = <project_home>/project-brain`. `project_alias` = kebab-case slug of the last path component of `project_home`. `project_title` = title-cased form of that same component. `domain_taxonomy` = `[engineering]` unless `--interactive`. Every derivation is pure string manipulation on `project_home` — **do NOT run `basename`, `pwd`, or any shell command.**
-    - **Step 1c — resolve `owner`:**
-        - If `--owner <email>` flag is set: use it verbatim. No TODO marker.
-        - Else (default flow): use the **literal placeholder `TODO@example.com`** and set a flag to emit the TODO marker in step 4. **Do NOT run any shell command to discover a better default** — no `git config`, no `echo $EMAIL`, no `whoami`. Every shell call prompts the user for permission in agentic IDEs, and the whole point of rc4's default flow is that install is silent after the one home-dir question.
-        - Exception: if `--init-git` is set, the shell is already being invoked downstream for `git init` + `commit`, so it's consistent to additionally consult `$EMAIL` then `git config user.email` as fallbacks between `--owner` and the TODO placeholder.
-2. **Validate preconditions.** Run only the preconditions that apply to the current invocation:
-    - ALWAYS check: #2 (existing-brain detection — see next step for the overwrite/cancel flow), #4 (owner-source best-effort — in the default flow this is just "did the user pass `--owner <email>`?" with no shell-side fallback; never refuses), #5 (registry alias collision, skip if `--no-registry`), #7 (domain_taxonomy slug rules).
-    - ONLY if `--init-git` is set: also check #1 (inside a git repo), #3 (working tree clean), #6 (remotes, if the user wants them in the registry entry).
-    - **Do NOT run `git rev-parse --is-inside-work-tree` unless `--init-git` is set.** The default flow is pure file ops — probing for a git repo is out of scope and triggers noisy permission prompts in agentic IDEs for no reason.
-    - On failure (other than the existing-brain case, handled in step 2.5), stop and report the specific precondition. Do not offer to `git init` unless the user passed `--init-git`; without that flag, git is irrelevant.
-2.5. **Existing-brain check + overwrite prompt.** Read-only file test on `<brain_path>/CONVENTIONS.md`:
-    - If absent: `<brain_path>` has no brain. Proceed to step 3.
-    - If present: a brain is already scaffolded here. Behavior depends on flags:
-        - `--force` was passed: rename `<brain_path>` → `<brain_path>.bak.<YYYYMMDD-HHMMSS>` using the file tool (no shell invocation — the agent's file-move primitive), then proceed.
-        - No flag: present an AskUserQuestion: `"A project-brain is already scaffolded at <brain_path>. Options:"` with choices `overwrite` (rename existing to .bak.<timestamp>/ and scaffold fresh) and `cancel` (exit cleanly, no changes). Default = cancel. If user picks overwrite → rename then proceed. If cancel → exit with one-line report: `Brain already exists at <brain_path>; no changes made. Pass --force to overwrite non-interactively.`
-    - The existing-brain backup is always recoverable: users can `rm -rf` the `.bak.<timestamp>` directory themselves if they want to free the space, or restore it by reversing the rename. The skill never deletes.
-3. **Create brain directory.** Use file-tool `mkdir`-equivalent to create `<brain_path>/tree`, `<brain_path>/threads`, `<brain_path>/archive`. No shell `mkdir -p`.
-4. **Write `CONVENTIONS.md`.** Read the pack's canonical `CONVENTIONS.md` (the one this pack ships). Splice § 10 subsections with the user's answers:
-    - § 10.1 Tree domain taxonomy — replaced with the `domain_taxonomy` list as a fenced-block outline.
-    - § 10.2 Debate personas — replaced with `debate_personas` if provided; otherwise keep the placeholder with a "— TBD; add personas before invoking `multi-agent-debate`" comment.
-    - § 10.3 Build toolchain — replaced with `build_toolchain` if provided; otherwise leave as commented placeholders.
-    - § 10.4 — untouched unless `role_extensions` was volunteered (rare at init time).
-    - **Owner TODO marker (v1.0.0-rc4).** If the resolved `owner` is the `TODO@example.com` placeholder (default flow without `--owner`, or `--init-git` flow where all fallbacks were empty), prepend a visible HTML comment block to § 10 that reads:
-      ```
-      <!-- TODO(project-brain init): The brain was scaffolded with owner = "TODO@example.com"
-           because no email was supplied. When you're ready — typically before your first
-           commit, or at latest when you run promote-thread-to-tree — replace every
-           `owner: TODO@example.com` reference in this brain with your real email:
-             CONVENTIONS.md (this file)
-             any thread.md you've created
-             ~/.config/project-brain/projects.yaml (if registry was written)
-           Then delete this TODO block. The skill intentionally did not try to guess your
-           email — doing so requires a shell invocation, which would defeat the "setup →
-           Done" mental model rc4 is built around. -->
-      ```
-      When the owner is a real email (from `--owner <email>` or, under `--init-git`, from `$EMAIL` / `git config user.email`), do NOT emit this block. The marker must be impossible to miss: first thing inside § 10, before § 10.1.
-   Write to `<brain_path>/CONVENTIONS.md`. Do not modify the sections above § 10 — those are the pack's shared contract.
-5. **Scaffold the root NODE.md.** Copy `assets/NODE-template.md` to `<brain_path>/tree/NODE.md`. Fill placeholders: `{{TITLE}}` = `"<project_title> — Knowledge Tree"`, `{{DOMAIN}}` = `/`, `{{PRIMARY_PROJECT}}` = `project_alias`. Populate the `## Sub-nodes` section with one bullet per entry in `domain_taxonomy`, each linked to the sub-directory's `NODE.md`.
-6. **Scaffold per-domain NODE.md.** For each `<domain>` in `domain_taxonomy`:
-    - `mkdir -p <brain_path>/tree/<domain>/`
-    - Copy `assets/NODE-template.md` to `<brain_path>/tree/<domain>/NODE.md`. Fill placeholders: `{{TITLE}}` = humanized `<domain>`, `{{DOMAIN}}` = `<domain>`, `{{PRIMARY_PROJECT}}` = `project_alias`. Leave `## Leaves` section with the placeholder `*(none yet — use `promote-thread-to-tree` to land the first decision)*`.
-7. **Write `thread-index.md`.** Copy `assets/thread-index-template.md` to `<brain_path>/thread-index.md`. Fill `{{PRIMARY_PROJECT}}` and `{{PROJECT_TITLE}}`.
-8. **Write `current-state.md`.** Copy `assets/current-state-template.md` to `<brain_path>/current-state.md`. Fill `{{PRIMARY_PROJECT}}` and `{{PROJECT_TITLE}}`.
-9. **Place `.gitkeep`** in `<brain_path>/threads/` and `<brain_path>/archive/` so empty directories stay tracked.
-10. **Write `config.yaml` (per-project).** Create `<brain_path>/config.yaml` with:
-    ```yaml
-    primary_project: <project_alias>
-    verbosity: terse
-    transcript_logging: on
-    aliases: {}
-    ```
-    See CONVENTIONS § 2.1 for the full schema. The `aliases:` block stays empty at init; cross-project references are added by hand later if needed.
+Steps in order:
 
-11. **Write `.gitignore`.** Create `<brain_path>/.gitignore` with entries for `transcript.md` and `attachments/` directories (per CONVENTIONS § 2.5).
+1. **Resolve inputs (pre-script, no file ops).**
+    - Determine `project_home`. Call `detect_host_project_root()` from `scripts/verify_tree/config.py`. It returns `(path, source)`. If `source ∈ {env:PROJECT_BRAIN_HOME, cowork-workspace, codex-project, claude-project, git-root}`: proceed silently with that path. If `source == "cwd"`: present one AskUserQuestion with cwd as the default and let the user accept or type an alternative. If `--home=<path>` was supplied: use verbatim, skip detection.
+    - Derive `alias` = kebab-case slug of `project_home`'s last-path-component. Derive `title` = title-cased form of that component. Pure string manipulation, no shell.
+    - Resolve `owner`: `--owner <email>` flag → use it. Otherwise use the literal placeholder `TODO@example.com`. **Do NOT invoke `git config user.email`, do NOT read `$EMAIL` or `$USER`, do NOT run any shell command to guess.** rc4 default flow is 100% shell-free except for the single script call in Step 3.
 
-12. **Update `~/.config/project-brain/projects.yaml`** (skip entirely if `--no-registry`). Create the file if it does not exist (with a top-level comment explaining what it is). Append an entry keyed by `<project_alias>`:
-    - **Default flow (no `--init-git`)** — write a minimal entry WITHOUT a `remotes:` block:
-      ```yaml
-      <project_alias>:
-        root: <path to repo root>
-        brain: <brain_path>
-      ```
-      Do NOT invoke `git remote -v` or `git remote get-url` to discover remotes — the default flow is git-free and the registry entry can grow a `remotes:` section later (users edit by hand, or re-run with `--init-git`, or fill it in at first promote).
-    - **With `--init-git`** — also include `remotes:` + `default_remote:` as collected from `git remote -v`:
-      ```yaml
-      <project_alias>:
-        root: <path to repo root>
-        brain: <brain_path>
-        remotes:
-          - name: <remote-name>
-            url: <git remote get-url output>
-            default_base: <default_base>
-        default_remote: <default_remote>
-      ```
-    Do not touch other projects' entries in either case.
+2. **Detect existing brain (read-only file test, no shell).** Use the Read tool (or equivalent) to check whether `<project_home>/project-brain/CONVENTIONS.md` exists.
+    - Absent: proceed to Step 3 with no `--force` flag.
+    - Present: present an AskUserQuestion: `"A project-brain is already scaffolded at <brain_path>. Overwrite (backup to project-brain.bak.<timestamp>/ and scaffold fresh) or cancel?"` Default = cancel. On "overwrite", proceed to Step 3 WITH `--force` (the script handles the backup-rename internally — **do not `mv` yourself**). On "cancel", exit cleanly with a one-liner.
 
-13. **Conditional git commit.** If `--init-git` is set, run `git add <brain_path>/ <brain_path>/.gitignore && git commit -m "chore(brain): scaffold project-brain for <project_alias>"`. If `--init-git` is NOT set, the skill DOES NOT commit — the user runs `git commit` themselves if (and when) they want to.
+3. **Call the scaffolding script. This is the ONLY mechanical tool call.**
 
-14. **Report.** At verbosity=terse (default), emit two lines:
+   Bash tool call (one invocation, one permission prompt):
+
+   ```bash
+   scripts/init-brain.sh \
+     --home='<project_home>' \
+     --alias='<alias>' \
+     --title='<title>' \
+     [--owner='<email>']       \   # only if --owner was passed to the skill
+     [--with-registry]         \   # only if --no-registry was NOT passed
+     [--force]                 \   # only if Step 2's prompt returned "overwrite"
+     [--init-git]                   # only if --init-git was passed to the skill
+   ```
+
+   **Do not call any other tool before this bash call** except the AskUserQuestion and file-existence check described in Steps 1–2. In particular: do not Read template files "to understand what the script will write" — the script is self-contained and tested.
+
+   What the script does internally (for your understanding only — you don't replicate this; the script does it):
+
+   - Creates `project-brain/{tree,threads,archive}` with `.gitkeep` in each, nothing else. Tree stays flat. No domain subdirectory.
+   - Copies `<pack>/CONVENTIONS.md` verbatim, prepends TODO marker to § 10 if owner is the placeholder.
+   - Copies + substitutes `thread-index.md` and `current-state.md` templates.
+   - Writes `config.yaml` + `.gitignore` from scratch (small fixed content).
+   - Optionally registers in `~/.config/project-brain/projects.yaml` under `--with-registry`.
+   - Optionally runs `git init` + single commit under `--init-git`. Default is git-free.
+   - Prints a terse one-liner to stdout + optional placeholder hint.
+
+4. **Report.** Passthrough the script's stdout verbatim and prepend one detection line. Do not add any of your own commentary. At verbosity=terse the full user-visible output is exactly:
 
     ```
-    Project home: <project_home>  (detected: <source>)
-    Initialized project-brain in <project_home>/project-brain/ (alias: <alias>). Done.
+    Project home: <project_home>  (source: <detection_source>)
+    Initialized project-brain in <project_home>/project-brain/ (alias: <alias>, owner: <owner>).
+      owner = TODO@example.com placeholder; replace in CONVENTIONS § 10 when ready.     # only if placeholder was used
     ```
 
-    (If `<source>` is `flag:--home`, phrase as "specified" rather than "detected".)
-
-    If the TODO placeholder was used for owner, append one more line:
-
-    ```
-    owner = TODO@example.com (no --owner flag; no shell lookup by design). Fix in CONVENTIONS § 10 before committing.
-    ```
-
-    If `--init-git` was NOT set (default), append one more line:
-
-    ```
-    Not committed — run `git add . && git commit` yourself when ready.
-    ```
+    Do not mention git, commits, or "run git add". Capture is git-free; promote-time is where git shows up. Telling the user about git at init cues a mental model this pack has intentionally moved away from.
 
     At verbosity=normal or verbose, expand with file list / registry entry / next-step suggestions as before.
 

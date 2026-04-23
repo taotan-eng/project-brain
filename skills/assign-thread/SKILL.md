@@ -57,6 +57,20 @@ The skill **refuses** if any of these are not met.
 
 ## Process
 
+> ### ⛔️ HARD CONSTRAINT FOR THE AGENT
+>
+> **All mechanical file operations happen inside `scripts/assign-thread.sh` — a single Bash tool call.** You, the agent, **MUST NOT**:
+>
+> - Read the existing thread.md via `Read` to eyeball the `assigned_to` list. The script does that.
+> - Run `Write .../thread.md` with an appended audit line yourself as separate tool calls. The script does it.
+>
+> - Invoke `verify-tree --rebuild-index` yourself. The script runs it internally after the assigned_to flip + audit-line append.
+>
+> **You MUST call `scripts/assign-thread.sh` exactly once, with appropriate flags, and nothing else in the mechanical path.** Each individual tool call triggers a permission prompt + full-content diff in the agent UI. The script completes in ~110ms.
+>
+> If you find yourself typing any of: `Read .../threads/`, `Write .../threads/`, `Edit .../thread.md` — STOP. You are improvising. The single correct Bash call is described below.
+
+
 Each step is atomic. Failure at step N leaves the tree in whatever state it was after step N-1.
 
 1. **Resolve inputs.** Infer `thread_slug` from cwd. If `operation` is not a flag, ask via `AskUserQuestion` which of the four modes to run. Prompt for operation-specific inputs (`handles`, `note`). Infer `actor` from the `--actor` flag; default to literal `TODO@example.com`. **Do NOT invoke `git config`** — rc4 defers git to promote-time.
