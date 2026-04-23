@@ -29,13 +29,8 @@ from typing import Any, Optional
 
 try:
     import yaml  # type: ignore
-except ImportError:  # pragma: no cover
-    import sys
-
-    sys.stderr.write(
-        "error: PyYAML is required. Install with `pip install PyYAML`.\n"
-    )
-    sys.exit(2)
+except ImportError:  # pragma: no cover - fallback to vendored mini parser
+    from . import _yaml_mini as yaml  # type: ignore
 
 
 # ---------------------------------------------------------------------------

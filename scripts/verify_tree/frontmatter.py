@@ -11,13 +11,12 @@ from typing import Optional
 
 try:
     import yaml  # type: ignore
-except ImportError:  # pragma: no cover - CI installs PyYAML
-    import sys
-
-    sys.stderr.write(
-        "error: PyYAML is required. Install with `pip install PyYAML`.\n"
-    )
-    sys.exit(2)
+except ImportError:  # pragma: no cover - fallback to vendored mini parser
+    # PyYAML is preferred when available (battle-tested, full spec).
+    # Absent it, fall back to the pack's own minimal parser which covers
+    # the narrow subset project-brain actually writes. See
+    # scripts/verify_tree/_yaml_mini.py for the subset contract.
+    from . import _yaml_mini as yaml  # type: ignore
 
 
 def parse_frontmatter(text: str) -> tuple[dict, str, int, Optional[str]]:

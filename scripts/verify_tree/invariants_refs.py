@@ -15,15 +15,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Iterable
 
-try:
-    import yaml  # type: ignore  # noqa: F401 — retained for callers
-except ImportError:  # pragma: no cover
-    import sys
-
-    sys.stderr.write(
-        "error: PyYAML is required. Install with `pip install PyYAML`.\n"
-    )
-    sys.exit(2)
+# YAML is loaded via .config, which in turn imports yaml or falls back
+# to _yaml_mini. This module no longer needs the direct import.
 
 from .config import (
     any_layer_available,

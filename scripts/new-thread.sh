@@ -158,15 +158,17 @@ copy_with_substitutions "${TEMPLATES}/open-questions.md"      "${THREAD_DIR}/ope
 # Rebuild aggregate indexes
 # ---------------------------------------------------------------------------
 
+REBUILD_STATUS="ok"
 if [[ -x "$VERIFIER" ]]; then
-  # Run rebuild; fail the whole op if it fails (partial scaffolds are
-  # recoverable since nothing else was touched).
-  if ! python3 "$VERIFIER" --brain "$BRAIN" --rebuild-index 2>/dev/null; then
-    echo "error: verify-tree --rebuild-index failed after scaffolding." >&2
-    echo "       Thread dir exists at $THREAD_DIR but indexes are stale." >&2
-    echo "       Run 'python3 ${VERIFIER} --brain ${BRAIN} --rebuild-index' to diagnose." >&2
-    exit 1
-  fi
+  # Attempt rebuild. If it fails we degrade gracefully: the thread
+  # scaffold is the primary success (files exist on disk, user can
+  # write in them immediately). Stale aggregate indexes (thread-index.md,
+  # current-state.md) are a secondary concern recoverable by re-running
+  # verify-tree at any time. Don't turn a successful thread creation
+  # into a failed operation just because rebuild had a hiccup.
+  REBUILD_STDERR="$(python3 "$VERIFIER" --brain "$BRAIN" --rebuild-index 2>&1 > /dev/null)" || {
+    REBUILD_STATUS="fail"
+  }
 fi
 
 # ---------------------------------------------------------------------------
@@ -177,8 +179,12 @@ echo "Created thread '${SLUG}' at ${THREAD_DIR}."
 if [[ "$OWNER" == "TODO@example.com" ]]; then
   echo "  owner = TODO@example.com placeholder; replace when ready."
 fi
+if [[ "$REBUILD_STATUS" == "fail" ]]; then
+  echo "  note: aggregate indexes (thread-index.md, current-state.md) are stale." >&2
+  echo "        the thread is usable as-is; run verify-tree --rebuild-index later to refresh." >&2
+  echo "        rebuild stderr: ${REBUILD_STDERR}" >&2
+fi
 # No git-commit reminder at capture time by design: capture/refine/debate
-# are all git-free per rc4. Mentioning git here cues a workflow model the
-# pack has intentionally moved away from. Git enters at promote-time.
+# are all git-free per rc4. Git enters at promote-time.
 
 exit 0
