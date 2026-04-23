@@ -90,7 +90,7 @@ The skill **refuses** if any of these are not met. Preconditions 1, 3, 6 apply *
 
 > ### ⛔️ HARD CONSTRAINT FOR THE AGENT
 >
-> **All mechanical scaffolding happens inside `scripts/init-brain.sh` — a single Bash tool call.** You, the agent, **MUST NOT**:
+> **All mechanical scaffolding happens inside `${CLAUDE_PLUGIN_ROOT}/scripts/init-brain.sh` — a single Bash tool call.** You, the agent, **MUST NOT**:
 >
 > - Read template files yourself (`Read assets/...`, `Glob assets/...`). The script reads them.
 > - Write scaffold files yourself (`Write project-brain/CONVENTIONS.md`, `Write project-brain/config.yaml`, etc.). The script writes them.
@@ -98,16 +98,13 @@ The skill **refuses** if any of these are not met. Preconditions 1, 3, 6 apply *
 > - Create `tree/engineering/` or any other domain subdirectory. Tree stays flat at init. Domain dirs appear on demand when `promote-thread-to-tree` lands the first decision there.
 > - "Write all the scaffold files in parallel." No. Call the script, nothing else.
 >
-> **You MUST call `scripts/init-brain.sh` exactly once, with appropriate flags, and nothing else in the mechanical-scaffolding path.** Every departure from this cascades into a 6-minute session of individual permission prompts. The script completes in under 100ms.
+> **You MUST call `${CLAUDE_PLUGIN_ROOT}/scripts/init-brain.sh` exactly once, with appropriate flags, and nothing else in the mechanical-scaffolding path.** `CLAUDE_PLUGIN_ROOT` is the env var Claude Code exports for plugin skills; it resolves to this pack's install root. **Do not** strip it off and call `scripts/init-brain.sh` bare — the relative path would resolve against the skill's own directory and fail. Every departure from this cascades into a 6-minute session of individual permission prompts. The script completes in under 100ms.
 >
 > If you find yourself typing any of: `Read assets/`, `Write .../project-brain/`, `mkdir .../project-brain/`, `mv .../project-brain project-brain.bak` — STOP. You are improvising. The single correct Bash call is in Step 3 below.
 
 Steps in order:
 
-1. **Resolve inputs (pre-script, no file ops).**
-    - Determine `project_home`. Call `detect_host_project_root()` from `scripts/verify_tree/config.py`. It returns `(path, source)`. If `source ∈ {env:PROJECT_BRAIN_HOME, cowork-workspace, codex-project, claude-project, git-root}`: proceed silently with that path. If `source == "cwd"`: present one AskUserQuestion with cwd as the default and let the user accept or type an alternative. If `--home=<path>` was supplied: use verbatim, skip detection.
-    - Derive `alias` = kebab-case slug of `project_home`'s last-path-component. Derive `title` = title-cased form of that component. Pure string manipulation, no shell.
-    - Resolve `owner`: `--owner <email>` flag → use it. Otherwise use the literal placeholder `TODO@example.com`. **Do NOT invoke `git config user.email`, do NOT read `$EMAIL` or `$USER`, do NOT run any shell command to guess.** rc4 default flow is 100% shell-free except for the single script call in Step 3.
+1. **Resolve inputs (pre-script, no file ops).** init-brain.sh handles host-project detection internally in pure bash — the same priority chain `detect_host_project_root()` uses (`PROJECT_BRAIN_HOME` → `COWORK_WORKSPACE_FOLDER` → `CODEX_PROJECT_ROOT` → `CLAUDE_PROJECT_ROOT` → nearest `.git/` ancestor → cwd). It also derives `alias`/`title` from the detected home's basename when they aren't supplied. **Don't invoke any Python helper yourself** — just omit `--home`, `--alias`, `--title` and let the script do it. The only manual resolution is `owner`: if the caller passed `--owner=<email>`, forward it; otherwise omit the flag and the script writes the literal placeholder `TODO@example.com`. **Do NOT invoke `git config user.email`, do NOT read `$EMAIL` or `$USER`, do NOT run any shell command to guess.** rc4 default flow is 100% shell-free except for the single script call in Step 3.
 
 2. **Detect existing brain (read-only file test, no shell).** Use the Read tool (or equivalent) to check whether `<project_home>/project-brain/CONVENTIONS.md` exists.
     - Absent: proceed to Step 3 with no `--force` flag.
@@ -118,15 +115,17 @@ Steps in order:
    Bash tool call (one invocation, one permission prompt):
 
    ```bash
-   scripts/init-brain.sh \
-     --home='<project_home>' \
-     --alias='<alias>' \
-     --title='<title>' \
+   "${CLAUDE_PLUGIN_ROOT}/scripts/init-brain.sh" \
+     [--home='<project_home>'] \   # optional; script auto-detects from env + .git walk
+     [--alias='<alias>']       \   # optional; derived from home basename
+     [--title='<title>']       \   # optional; derived from home basename
      [--owner='<email>']       \   # only if --owner was passed to the skill
      [--with-registry]         \   # only if --no-registry was NOT passed
      [--force]                 \   # only if Step 2's prompt returned "overwrite"
-     [--init-git]                   # only if --init-git was passed to the skill
+     [--init-git]                  # only if --init-git was passed to the skill
    ```
+
+   **In most cases no flags are needed at all.** The script detects the host project, derives alias/title from its basename, and scaffolds. Pass flags only when the user has overridden something explicitly. The success line prints the detected home + source so the user can sanity-check (`project home auto-detected via cowork-workspace.`).
 
    **Do not call any other tool before this bash call** except the AskUserQuestion and file-existence check described in Steps 1–2. In particular: do not Read template files "to understand what the script will write" — the script is self-contained and tested.
 

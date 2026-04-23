@@ -74,21 +74,73 @@ while [[ $# -gt 0 ]]; do
 done
 
 # ---------------------------------------------------------------------------
-# 2. Validate args
+# 2. Auto-detect missing inputs (so the LLM never has to invoke Python
+#    just to determine where the host project lives)
 # ---------------------------------------------------------------------------
+#
+# CONVENTIONS § 1 commits to a 1:1 correspondence between a project-brain
+# project and the host environment's project concept. We probe the same
+# priority chain `detect_host_project_root()` uses, but in pure bash so
+# nothing can wedge on a missing Python/PyYAML setup.
 
-if [[ -z "$PROJECT_HOME" || -z "$PROJECT_ALIAS" || -z "$PROJECT_TITLE" ]]; then
-  echo "error: --home, --alias, --title are all required." >&2
-  exit 2
+HOME_SOURCE=""
+if [[ -z "$PROJECT_HOME" ]]; then
+  if [[ -n "${PROJECT_BRAIN_HOME:-}" ]]; then
+    PROJECT_HOME="$PROJECT_BRAIN_HOME";  HOME_SOURCE="env:PROJECT_BRAIN_HOME"
+  elif [[ -n "${COWORK_WORKSPACE_FOLDER:-}" ]]; then
+    PROJECT_HOME="$COWORK_WORKSPACE_FOLDER"; HOME_SOURCE="cowork-workspace"
+  elif [[ -n "${CODEX_PROJECT_ROOT:-}" ]]; then
+    PROJECT_HOME="$CODEX_PROJECT_ROOT";  HOME_SOURCE="codex-project"
+  elif [[ -n "${CLAUDE_PROJECT_ROOT:-}" ]]; then
+    PROJECT_HOME="$CLAUDE_PROJECT_ROOT"; HOME_SOURCE="claude-project"
+  else
+    # Walk up for .git; bail at filesystem root.
+    CURSOR="$(pwd -P)"
+    for _ in $(seq 1 40); do
+      if [[ -e "$CURSOR/.git" ]]; then
+        PROJECT_HOME="$CURSOR"; HOME_SOURCE="git-root"; break
+      fi
+      PARENT="$(dirname "$CURSOR")"
+      if [[ "$PARENT" == "$CURSOR" ]]; then break; fi
+      CURSOR="$PARENT"
+    done
+    if [[ -z "$PROJECT_HOME" ]]; then
+      PROJECT_HOME="$(pwd -P)"; HOME_SOURCE="cwd"
+    fi
+  fi
 fi
 
 # Resolve to absolute path; refuse if doesn't exist (we don't create
 # arbitrary parent dirs — that's a host-level responsibility).
 if [[ ! -d "$PROJECT_HOME" ]]; then
-  echo "error: --home path does not exist: $PROJECT_HOME" >&2
+  echo "error: project home does not exist: $PROJECT_HOME" >&2
   exit 2
 fi
 PROJECT_HOME="$(cd "$PROJECT_HOME" && pwd)"
+
+# Derive alias/title from the home basename when not supplied. kebab-case
+# for alias (lowercase + non-alphanum → '-'), title-case via first-letter
+# uppercase per word. Pure shell.
+PROJECT_BASENAME="$(basename "$PROJECT_HOME")"
+if [[ -z "$PROJECT_ALIAS" ]]; then
+  PROJECT_ALIAS="$(printf '%s' "$PROJECT_BASENAME" \
+    | tr '[:upper:]' '[:lower:]' \
+    | sed -e 's/[^a-z0-9]/-/g' -e 's/--*/-/g' -e 's/^-//' -e 's/-$//')"
+  if [[ -z "$PROJECT_ALIAS" ]]; then
+    echo "error: could not derive alias from '$PROJECT_BASENAME'; pass --alias explicitly." >&2
+    exit 2
+  fi
+  # Ensure leading character is a letter per § 11.1
+  if [[ ! "$PROJECT_ALIAS" =~ ^[a-z] ]]; then
+    PROJECT_ALIAS="p-${PROJECT_ALIAS}"
+  fi
+fi
+if [[ -z "$PROJECT_TITLE" ]]; then
+  # Title-case: replace separators with space, uppercase first letter of each word
+  PROJECT_TITLE="$(printf '%s' "$PROJECT_BASENAME" \
+    | sed -e 's/[-_]/ /g' \
+    | awk '{for(i=1;i<=NF;i++){$i=toupper(substr($i,1,1)) tolower(substr($i,2))}; print}')"
+fi
 
 # Slug sanity check
 if [[ ! "$PROJECT_ALIAS" =~ ^[a-z][a-z0-9]*(-[a-z0-9]+)*$ ]]; then
@@ -294,6 +346,9 @@ fi
 # ---------------------------------------------------------------------------
 
 echo "Initialized project-brain in ${BRAIN_PATH} (alias: ${PROJECT_ALIAS}, owner: ${OWNER})."
+if [[ -n "$HOME_SOURCE" ]]; then
+  echo "  project home auto-detected via ${HOME_SOURCE}."
+fi
 if [[ "$OWNER_SOURCE" == "placeholder" ]]; then
   echo "  owner = TODO@example.com placeholder; replace in CONVENTIONS § 10 when ready."
 fi

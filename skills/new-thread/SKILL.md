@@ -52,7 +52,7 @@ The skill **refuses** if any of these are not met. It does not silently fix.
 
 > ### ⛔️ HARD CONSTRAINT FOR THE AGENT
 >
-> **All mechanical scaffolding happens inside `scripts/new-thread.sh` — a single Bash tool call.** You, the agent, **MUST NOT**:
+> **All mechanical scaffolding happens inside `${CLAUDE_PLUGIN_ROOT}/scripts/new-thread.sh` — a single Bash tool call.** You, the agent, **MUST NOT**:
 >
 > - Read template files yourself (`Read assets/thread-template/...`). The script reads them.
 > - Write scaffold files yourself (`Write .../thread.md`, `Write .../decisions-candidates.md`, `Write .../open-questions.md`). The script writes them.
@@ -60,7 +60,7 @@ The skill **refuses** if any of these are not met. It does not silently fix.
 > - Invoke `verify-tree --rebuild-index` yourself. The script runs it internally after writing the templates.
 > - "Write all the thread files in parallel." No. Call the script, nothing else.
 >
-> **You MUST call `scripts/new-thread.sh` exactly once, with appropriate flags, and nothing else in the mechanical-scaffolding path.** Each individual tool call triggers a permission prompt + a full-content diff render in the agent UI. The script completes in ~90ms.
+> **You MUST call `${CLAUDE_PLUGIN_ROOT}/scripts/new-thread.sh` exactly once, with appropriate flags, and nothing else in the mechanical-scaffolding path.** `CLAUDE_PLUGIN_ROOT` is the env var Claude Code exports for plugin skills; it resolves to this pack's install root. **Do not** strip it off and call `scripts/new-thread.sh` bare — the relative path would resolve against the skill's own directory and fail (`no such file`). Each individual tool call triggers a permission prompt + a full-content diff render in the agent UI. The script completes in ~90ms.
 >
 > If you find yourself typing any of: `Read .../assets/thread-template/`, `Write .../threads/<slug>/`, `mkdir .../threads/<slug>` — STOP. You are improvising. The single correct Bash call is in Step 2 below.
 
@@ -73,7 +73,7 @@ Steps in order:
    Bash tool call (one invocation, one permission prompt):
 
    ```bash
-   scripts/new-thread.sh \
+   "${CLAUDE_PLUGIN_ROOT}/scripts/new-thread.sh" \
      --brain='<absolute brain path>' \
      --slug='<slug>' \
      --title='<title>' \

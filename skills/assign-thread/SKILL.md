@@ -59,14 +59,14 @@ The skill **refuses** if any of these are not met.
 
 > ### ⛔️ HARD CONSTRAINT FOR THE AGENT
 >
-> **All mechanical file operations happen inside `scripts/assign-thread.sh` — a single Bash tool call.** You, the agent, **MUST NOT**:
+> **All mechanical file operations happen inside `${CLAUDE_PLUGIN_ROOT}/scripts/assign-thread.sh` — a single Bash tool call.** You, the agent, **MUST NOT**:
 >
 > - Read the existing thread.md via `Read` to eyeball the `assigned_to` list. The script does that.
 > - Run `Write .../thread.md` with an appended audit line yourself as separate tool calls. The script does it.
 >
 > - Invoke `verify-tree --rebuild-index` yourself. The script runs it internally after the assigned_to flip + audit-line append.
 >
-> **You MUST call `scripts/assign-thread.sh` exactly once, with appropriate flags, and nothing else in the mechanical path.** Each individual tool call triggers a permission prompt + full-content diff in the agent UI. The script completes in ~110ms.
+> **You MUST call `${CLAUDE_PLUGIN_ROOT}/scripts/assign-thread.sh` exactly once, with appropriate flags, and nothing else in the mechanical path.** `CLAUDE_PLUGIN_ROOT` is the env var Claude Code exports for plugin skills; it resolves to this pack's install root. **Do not** strip it off and call `scripts/assign-thread.sh` bare — the relative path would resolve against the skill's own directory and fail. Each individual tool call triggers a permission prompt + full-content diff in the agent UI. The script completes in ~110ms.
 >
 > If you find yourself typing any of: `Read .../threads/`, `Write .../threads/`, `Edit .../thread.md` — STOP. You are improvising. The single correct Bash call is described below.
 
@@ -78,7 +78,7 @@ Each step is atomic. Failure at step N leaves the tree in whatever state it was 
 3. **Execute one-shot script.** Invoke the assign-thread script in a single Bash call:
 
    ```bash
-   scripts/assign-thread.sh \
+   "${CLAUDE_PLUGIN_ROOT}/scripts/assign-thread.sh" \
      --brain=<absolute brain path> \
      --slug=<thread_slug>          \
      --add=<handles>               \  # one of: --add, --remove, --set, --clear
