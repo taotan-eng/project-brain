@@ -1,7 +1,7 @@
 ---
 name: review-parked-threads
 description: Read-only periodic audit of parked threads. Surfaces three categories of action-worthy parked threads — actionable (unpark_trigger set; human decides if condition fired), stale (parked ≥N days; candidates for unpark or archive), and hygiene warnings (no unpark_trigger; need explicit reason for return). Use when the user says "review parked threads", "what parked threads need attention", "audit the park queue", or as a weekly/monthly cadence check. Complements discover-threads --status=parked with automatic age and trigger analysis.
-version: 0.1.1
+version: 1.0.0-rc4
 pack: project-brain
 requires:
   - "read:[brain-root]"
@@ -55,8 +55,8 @@ All flags are optional.
 
 The skill **refuses** if any of these are not met.
 
-1. `brain_path` resolves to a directory containing `CONVENTIONS.md`. Defaults to the nearest ancestor `thoughts/` directory; use `--brain=<path>` to override.
-2. `thoughts/threads/` exists and is readable.
+1. `brain_path` resolves to a directory containing `CONVENTIONS.md`. Defaults to the nearest ancestor `project-brain/` directory; use `--brain=<path>` to override.
+2. `project-brain/threads/` exists and is readable.
 3. All flag values are valid per the table above. Invalid `--format` or `--sort` values result in refusal with usage hints.
 4. `--stale-days` is a non-negative integer.
 5. `--assigned` and `--domain` are non-empty strings if supplied.
@@ -69,7 +69,7 @@ Each step is read-only and idempotent.
 
 1. **Resolve inputs.** Infer `brain_path` from cwd or `--brain` flag. Parse all filter and format flags. Validate flag values; refuse on error. Compute the effective set of categories to include (based on three `--include-*` flags). Get the current date/time in UTC.
 
-2. **Enumerate parked threads.** Scan `thoughts/threads/*/thread.md` and filter to threads with `status: parked`. Collect file paths and parse frontmatter for each. Extract: `id` (slug), `title`, `status`, `maturity`, `created_at`, `parked_at`, `parked_by`, `parked_reason`, `unpark_trigger` (if present), `assigned_to` (if present), `tree_domain`, `reviewed_at` (optional, for audit trail). On parse failure, emit a warning and skip the thread; accumulate a list of malformed-frontmatter threads to report at the end.
+2. **Enumerate parked threads.** Scan `project-brain/threads/*/thread.md` and filter to threads with `status: parked`. Collect file paths and parse frontmatter for each. Extract: `id` (slug), `title`, `status`, `maturity`, `created_at`, `parked_at`, `parked_by`, `parked_reason`, `unpark_trigger` (if present), `assigned_to` (if present), `tree_domain`, `reviewed_at` (optional, for audit trail). On parse failure, emit a warning and skip the thread; accumulate a list of malformed-frontmatter threads to report at the end.
 
 3. **Compute metadata.** For each parked thread:
    - `parked_duration_days` = now() - `parked_at` (rounded down to whole days).
@@ -257,11 +257,20 @@ None. This is a read-only audit skill. No frontmatter fields in any file are mod
 - Output is streamed to stdout.
 - Exactly one pass over the thread directory.
 
+### Verbosity contract
+
+Reads `verbosity` from `<brain>/config.yaml` (env override: `PROJECT_BRAIN_VERBOSITY`). Defaults to `terse`.
+
+- **terse** (default): one acknowledgement line naming the action + target, then `Done.` No tool-output echo, no "let me..." preamble.
+  - Example output: `Reviewed 12 parked threads: 3 actionable, 2 stale, 7 hygiene. Done.`
+- **normal**: structured summary of what changed (file paths, artifact counts), no conversational framing.
+- **verbose**: full narration (pre-rc4 default). Use for debugging.
+
 ## Failure modes
 
 | Failure | Cause | Response |
 |---------|-------|----------|
-| Brain root not found | No `thoughts/CONVENTIONS.md` up the tree; no `--brain` given | refuse — suggest `--brain=<path>` or cd to project dir |
+| Brain root not found | No `project-brain/CONVENTIONS.md` up the tree; no `--brain` given | refuse — suggest `--brain=<path>` or cd to project dir |
 | Invalid `--format` value | Not in `{markdown-report, table, json, csv}` | refuse — list valid options |
 | Invalid `--sort` value | Not in `{age-desc, age-asc, slug}` | refuse — list valid options |
 | `--stale-days` not an integer | Non-numeric or negative | refuse |
@@ -281,7 +290,7 @@ Soft failures (malformed frontmatter) do not cause refusal — they are reported
 
 ## Asset dependencies
 
-None. The skill reads only per-thread frontmatter from `thoughts/threads/*/thread.md`. It does not reference any templates or files under the pack's `assets/` directory.
+None. The skill reads only per-thread frontmatter from `project-brain/threads/*/thread.md`. It does not reference any templates or files under the pack's `assets/` directory.
 
 | Asset path | Used at step | Purpose |
 |------------|--------------|---------|

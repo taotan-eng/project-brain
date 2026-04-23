@@ -4,7 +4,7 @@
 
 - `{{DOMAIN}}/{{LEAF_SLUG}}.md` — {{LEAF_TITLE}}
 
-**Source thread:** [`{{THREAD_SLUG}}`](../thoughts/threads/{{THREAD_SLUG}}/thread.md)
+**Source thread:** [`{{THREAD_SLUG}}`](../project-brain/threads/{{THREAD_SLUG}}/thread.md)
 
 ## Why now
 

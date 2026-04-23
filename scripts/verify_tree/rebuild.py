@@ -1,7 +1,7 @@
 """`--rebuild-index` mode: regenerate thread-index.md and current-state.md.
 
 Contract (SKILL.md § Rebuild):
-  * Source of truth = `thoughts/threads/*/thread.md` + `thoughts/archive/*/thread.md`
+  * Source of truth = `<brain>/threads/*/thread.md` + `<brain>/archive/*/thread.md`
   * Validate sources first; refuse to write if any source has V-06/V-01/V-07/V-08/V-12 errors.
   * Group by status (active / in-review / parked / archived), sort by
     per-status timestamp (desc), tie-break by slug.

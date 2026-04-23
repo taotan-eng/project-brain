@@ -4,7 +4,7 @@
 
 `project-brain` is a set of fourteen skills that cooperate to move an idea from "I was thinking about X" to a merged, reviewed, auditable decision in your repo. It is deliberately generic — a new project installs the pack, fills in a few slots (domain taxonomy, debate personas, build commands), and gets the full pipeline with no project-specific skill code.
 
-The pack lives in `thoughts/` at your project root — visible, tracked, reviewable via PR. Nothing is hidden under `.ai/` or derived from a database; the tree itself is authoritative.
+The pack lives in `project-brain/` at your project root — visible, tracked, reviewable via PR. Nothing is hidden under `.ai/` or derived from a database; the tree itself is authoritative.
 
 ---
 
@@ -20,11 +20,12 @@ The pack lives in `thoughts/` at your project root — visible, tracked, reviewa
 5. [A day in the life](#a-day-in-the-life)
 6. [Data model](#data-model)
 7. [Cross-cutting: context, validation, and fleet queries](#cross-cutting-context-validation-and-fleet-queries)
-8. [Extending the pack](#extending-the-pack)
-9. [Runtime portability](#runtime-portability)
-10. [Security](#security)
-11. [Disclaimer](#disclaimer)
-12. [Versioning and status](#versioning-and-status)
+8. [Configuration (rc4+)](#configuration-rc4)
+9. [Extending the pack](#extending-the-pack)
+10. [Runtime portability](#runtime-portability)
+11. [Security](#security)
+12. [Disclaimer](#disclaimer)
+13. [Versioning and status](#versioning-and-status)
 
 ---
 
@@ -32,10 +33,10 @@ The pack lives in `thoughts/` at your project root — visible, tracked, reviewa
 
 The pack owns three artifact kinds and one registry:
 
-- **Thread.** A private workspace for thinking — one folder per topic under `thoughts/threads/<slug>/`. Lives in `active | parked | in-review | archived`.
-- **Leaf.** A decision recorded in the shared tree at `thoughts/tree/<domain>/<leaf>.md`. Lives in the chain `draft → in-review → decided → specified → building → built`, with `hardening` as a transient pressure-test state and `superseded` as an orthogonal terminal.
+- **Thread.** A private workspace for thinking — one folder per topic under `project-brain/threads/<slug>/`. Lives in `active | parked | in-review | archived`.
+- **Leaf.** A decision recorded in the shared tree at `project-brain/tree/<domain>/<leaf>.md`. Lives in the chain `draft → in-review → decided → specified → building → built`, with `hardening` as a transient pressure-test state and `superseded` as an orthogonal terminal.
 - **NODE.md.** The index file for each tree directory — `decided` forever, no lifecycle of its own.
-- **Project registry.** `~/.ai/projects.yaml` maps aliases to brain roots and remote URLs so skills can resolve `alias:tree/path` URIs without shelling out to `git remote -v`.
+- **Project registry.** `~/.config/project-brain/projects.yaml` maps aliases to brain roots and remote URLs so skills can resolve `alias:tree/path` URIs without shelling out to `git remote -v`.
 
 Every skill in the pack reads `CONVENTIONS.md` at the brain root as its source of truth. Frontmatter schemas, lifecycle transitions, validator invariants, and naming rules are all defined there. If the schema changes, you change it there first and the skills follow.
 
@@ -59,7 +60,7 @@ claude plugin list         # confirms project-brain@project-brain is enabled
 
 **Claude Cowork (desktop app):** Cowork's in-app plugin browser (Settings → Extensions) currently surfaces only Anthropic- and partner-curated plugins, so `project-brain` isn't searchable there yet. Until the pack is accepted into Anthropic's community directory, Cowork users should install via the Claude Code CLI above (Cowork picks up plugins installed through the CLI on the same machine) or follow the manual procedure below.
 
-Once installed, skip ahead to the first-run scaffold step — the plugin install handles Step 1 + Step 2 of the manual procedure for you. You only need to run `init-project-brain` against your project to get `thoughts/` scaffolded.
+Once installed, skip ahead to the first-run scaffold step — the plugin install handles Step 1 + Step 2 of the manual procedure for you. You only need to run `init-project-brain` against your project to get `project-brain/` scaffolded.
 
 ### Install by pointing an AI agent at the repo
 
@@ -76,22 +77,22 @@ Copy-paste one of the prompts below into your AI coding assistant (Claude Code, 
 > 3. Read every `skills/*/SKILL.md` so you know what each skill does.
 > 4. Read `/tmp/project-brain-pack/INSTALL.md` for the step-by-step install procedure; it is authoritative if it disagrees with anything you infer.
 > 5. Copy the pack contents (`skills/`, `assets/`, `CONVENTIONS.md`, `scripts/`) into the place your agent runtime expects skill packs to live (Claude Code: `.claude/skills/project-brain/`; others: whatever the runtime's skill-pack directory is — ask me if unsure).
-> 6. Run `skills/init-project-brain` against my current repo to scaffold `thoughts/`. If your runtime cannot invoke the skill directly, follow the Process section of `skills/init-project-brain/SKILL.md` by hand — it is written as an instruction sheet for exactly this case.
+> 6. Run `skills/init-project-brain` against my current repo to scaffold `project-brain/`. If your runtime cannot invoke the skill directly, follow the Process section of `skills/init-project-brain/SKILL.md` by hand — it is written as an instruction sheet for exactly this case.
 > 7. Report what you scaffolded and what answers you gave to the init prompts (project alias, domain list, etc.) so I can review.
 >
 > Do not modify any pack file during install. If you find the pack is missing something you need, surface it as a warning; do not patch the pack in place.
 
 > **Claude Code specific prompt.**
 >
-> Clone `<repo-url>` and install its `project-brain` skill pack. Place it at `.claude/skills/project-brain/` inside my current repo. Read `CONVENTIONS.md` and every `skills/*/SKILL.md` before doing anything else. Then run the `init-project-brain` skill to scaffold `thoughts/` in this project.
+> Clone `<repo-url>` and install its `project-brain` skill pack. Place it at `.claude/skills/project-brain/` inside my current repo. Read `CONVENTIONS.md` and every `skills/*/SKILL.md` before doing anything else. Then run the `init-project-brain` skill to scaffold `project-brain/` in this project.
 
 > **Codex / Cursor / Gemini CLI / Aider specific prompt.**
 >
 > Your runtime may or may not have a "skill pack" concept. Treat the SKILL.md files as authoritative instruction sheets. Install path:
 >
 > 1. Clone `<repo-url>` somewhere on disk.
-> 2. Copy `CONVENTIONS.md` to `thoughts/CONVENTIONS.md` in my project (`init-project-brain` expects it there and will refuse without it).
-> 3. Copy `skills/`, `assets/`, and `scripts/` to a predictable location (suggested: `thoughts/.pack/`) so the other skills can find their templates and helpers.
+> 2. Copy `CONVENTIONS.md` to `project-brain/CONVENTIONS.md` in my project (`init-project-brain` expects it there and will refuse without it).
+> 3. Copy `skills/`, `assets/`, and `scripts/` to a predictable location (suggested: `project-brain/.pack/`) so the other skills can find their templates and helpers.
 > 4. Walk `skills/init-project-brain/SKILL.md` step by step to scaffold the rest.
 > 5. Future invocations of any skill = read that skill's SKILL.md, follow its Process section, honor its Preconditions and Postconditions.
 
@@ -110,9 +111,9 @@ mkdir -p .claude/skills
 cp -R /tmp/project-brain-pack/skills/*  .claude/skills/
 #    CONVENTIONS and scripts land at the brain root once init runs:
 mkdir -p thoughts
-cp /tmp/project-brain-pack/CONVENTIONS.md thoughts/CONVENTIONS.md
-cp -R /tmp/project-brain-pack/assets  thoughts/.pack-assets    # referenced by the skills
-cp -R /tmp/project-brain-pack/scripts thoughts/.pack-scripts   # e.g. verify-tree.py
+cp /tmp/project-brain-pack/CONVENTIONS.md project-brain/CONVENTIONS.md
+cp -R /tmp/project-brain-pack/assets  project-brain/.pack-assets    # referenced by the skills
+cp -R /tmp/project-brain-pack/scripts project-brain/.pack-scripts   # e.g. verify-tree.py
 
 # 3. Verify the skills are discoverable by your runtime.
 #    Claude Code:
@@ -124,7 +125,7 @@ ls .claude/skills/      # should list init-project-brain, new-thread, ...
 #    and follow the Process section manually.
 ```
 
-After init runs, your repo gains a `thoughts/` directory with `thread-index.md`, `current-state.md`, `tree/NODE.md`, one `NODE.md` per top-level domain, and an entry in `~/.ai/projects.yaml`. The bootstrap lands as a single commit on your current branch.
+After init runs, your repo gains a `project-brain/` directory with `thread-index.md`, `current-state.md`, `tree/NODE.md`, one `NODE.md` per top-level domain, and an entry in `~/.config/project-brain/projects.yaml`. The bootstrap lands as a single commit on your current branch.
 
 ### Post-install sanity check
 
@@ -138,10 +139,10 @@ python3 .pack-scripts/verify-tree.py            # should exit 0
 # skill: verify-tree
 
 # Confirm the project alias registered.
-cat ~/.ai/projects.yaml | grep -A5 '<your-alias>:'
+cat ~/.config/project-brain/projects.yaml | grep -A5 '<your-alias>:'
 ```
 
-If `verify-tree` fails with "Brain root not found", you ran it from outside `thoughts/` — cd in first. If it fails with "Missing CONVENTIONS.md", the install did not copy the file; re-run step 2 of the manual install.
+If `verify-tree` fails with "Brain root not found", you ran it from outside `project-brain/` — cd in first. If it fails with "Missing CONVENTIONS.md", the install did not copy the file; re-run step 2 of the manual install.
 
 ---
 
@@ -150,7 +151,7 @@ If `verify-tree` fails with "Brain root not found", you ran it from outside `tho
 ```mermaid
 flowchart TD
     subgraph SETUP["Setup (once per project)"]
-        A0([init-project-brain]) --> A1[thoughts/ scaffold]
+        A0([init-project-brain]) --> A1[project-brain/ scaffold]
     end
 
     subgraph CAPTURE["Capture / Refine"]
@@ -213,7 +214,7 @@ Each row is an owned lifecycle transition — or, for the read-only query skills
 
 | # | Skill | Phase | Owns |
 |---|-------|-------|------|
-| 1 | [`init-project-brain`](skills/init-project-brain/SKILL.md) | setup | nothing → scaffolded `thoughts/` |
+| 1 | [`init-project-brain`](skills/init-project-brain/SKILL.md) | setup | nothing → scaffolded `project-brain/` |
 | 2 | [`new-thread`](skills/new-thread/SKILL.md) | capture | nothing → thread `active/exploring` |
 | 3 | [`update-thread`](skills/update-thread/SKILL.md) | refinement | maturity flips, candidate add/rename/remove, `soft_links` edits |
 | 4 | [`park-thread`](skills/park-thread/SKILL.md) | refinement | `active ↔ parked` |
@@ -236,11 +237,11 @@ Two deferred to future releases: `derive-impl-spec` (bridges `decided → specif
 
 A typical flow from "I was thinking about X" to a merged decision with a hardening pass:
 
-1. **Capture.** `new-thread` creates `thoughts/threads/<slug>/` with `thread.md`, `decisions-candidates.md`, `open-questions.md`. Lifecycle enters at `active/exploring`.
+1. **Capture.** `new-thread` creates `project-brain/threads/<slug>/` with `thread.md`, `decisions-candidates.md`, `open-questions.md`. Lifecycle enters at `active/exploring`.
 2. **Refine.** `update-thread` bumps maturity (`exploring → refining → locking`), adds candidate decisions as H2 sections in `decisions-candidates.md`, edits `soft_links`, or commits freeform notes. One operation per invocation. Does not flip `status` — that is the job of the promote / park / discard / finalize trio.
 3. **(Optional) Early review.** `multi-agent-debate --scope=thread` runs one or more review rounds against the thread. Configurable reviewer count (`--reviewers=N`), § 10.2 personas or ad-hoc (`--persona=name:charter`), full or delta review (`--review-mode=delta` re-uses the prior round as a baseline). No status flip — the thread stays `active`. Multiple rounds are normal during refinement.
 4. **(Optional) Pause.** If work stalls on external input, `park-thread` flips `active → parked` with a reason and an optional resumption trigger. Maturity is preserved in frontmatter so `park-thread --unpark` is lossless.
-5. **(Optional) Abandon.** If the idea dies pre-promotion, `discard-thread` archives the thread to `thoughts/archive/<slug>/` with a discard reason. Refuses if `tree_prs` is populated — use the promotion-side sibling skills instead.
+5. **(Optional) Abandon.** If the idea dies pre-promotion, `discard-thread` archives the thread to `project-brain/archive/<slug>/` with a discard reason. Refuses if `tree_prs` is populated — use the promotion-side sibling skills instead.
 6. **Promote.** `promote-thread-to-tree` cuts a promote branch from the user-selected base, lands three commits (stage as `draft` → land at final tree path still `draft` → flip to `in-review` with PR URL recorded on the thread), plus one bookkeeping commit on main syncing the thread's `in-review` state. Opens a PR via `gh pr create`.
 7. **Review.** A promote PR has two outcomes:
     - **Merged** → `finalize-promotion` reconciles main, flips each leaf `in-review → decided`, appends to the thread's `promoted_to` / `promoted_at` parallel lists, and resolves the disposition: continue (thread back to `active/refining` for another wave) or archive.
@@ -340,6 +341,41 @@ Five skills are invokable from anywhere and own no per-artifact lifecycle state:
 **`review-parked-threads`** is the triage view over the parked subset. Partitions the parked fleet into three buckets — **actionable** (`unpark_trigger` populated), **stale** (parked beyond `--stale-days`, default 90), **no-trigger hygiene** (parked without a trigger) — and emits a `markdown-report` by default. Pure read; recommends `park-thread --unpark`, `discard-thread`, or `update-thread` as follow-ups without invoking them.
 
 **`assign-thread`** is the one write skill in the triage group. `--add`, `--remove`, `--set`, `--clear` against `assigned_to`; appends an audit line to the thread body's `## Assignment history` section (created on first use) and runs `verify-tree --rebuild-index` as its final step so the aggregate index files pick up the change atomically. Does not enforce an assignment model — teams wire enforcement externally via CODEOWNERS, branch protection, or bot automation.
+
+---
+
+## Configuration (rc4+)
+
+Two optional config layers adjust pack behavior without changing any schema. Both are **opt-in** — the pack works fine with neither file.
+
+**`<brain>/config.yaml`** — per-project, authoritative. Describes one brain.
+
+```yaml
+primary_project: my-app        # alias of this brain — must match thread frontmatter
+aliases:                       # cross-project refs this brain emits (optional)
+  adp:
+    brain: /home/you/workspace/adp/project-brain
+verbosity: terse               # terse (default) | normal | verbose
+transcript_logging: on         # on (default) | off
+```
+
+**`~/.config/project-brain/projects.yaml`** — user-global, opt-in fallback. Consulted only when an alias isn't listed in the per-project `aliases:` block. XDG-compliant (honours `$XDG_CONFIG_HOME`). A brain that doesn't emit cross-project `soft_links` needs neither layer; an unresolvable alias with no layer present is a V-03 *warning*, not an error, so the brain remains usable without ever creating the home-dir file. See CONVENTIONS § 2 for the full schema + severity rules.
+
+**Verbosity** controls how much prose skills emit alongside their file operations:
+
+- `terse` (default) — one acknowledgement line + `Done.` No preamble, no tool-output echo.
+- `normal` — structured summary of what changed, no conversational framing.
+- `verbose` — full narration (pre-rc4 behavior). Use for debugging.
+
+**Transcript logging** controls whether mutating skills append verbatim human-LLM transcripts to `<thread>/transcript.md` (the curated summary stays in `thread.md`). Default `on`. Set `off` in config.yaml for brain-wide disable, or `transcript: off` in a thread's frontmatter for per-thread disable.
+
+Environment overrides (primarily for tests / CI):
+
+- `PROJECT_BRAIN_CONFIG` — absolute path to a per-project config.yaml.
+- `PROJECT_BRAIN_PROJECTS_YAML` — absolute path to the global registry.
+- `PROJECT_BRAIN_VERBOSITY` / `PROJECT_BRAIN_TRANSCRIPT` — override the respective knob without editing config.yaml.
+
+See CONVENTIONS § 2.5 for the default `.gitignore` entries for transcripts + attachments (both gitignored by default so PR diffs stay focused on curated content).
 
 ---
 

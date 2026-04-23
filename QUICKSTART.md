@@ -13,17 +13,31 @@ You need:
 - An AI agent runtime that runs skills. Claude Code is the reference implementation; Claude Desktop with Cowork, Cursor, Gemini CLI, or Aider also work (see RUNTIME.md for compatibility notes).
 - Five uninterrupted minutes.
 
-The pack is language-agnostic and lives in `thoughts/` at your project root, so your codebase is unaffected.
+The pack is language-agnostic and lives in `project-brain/` at your project root, so your codebase is unaffected.
 
 ---
 
-## Install (90 seconds)
+## Install (30 seconds)
 
 Ask your agent: "Install the `project-brain` skill pack into my current project. Use the Claude Code layout if running inside Claude Code; otherwise use the generic layout."
 
-Your agent will clone the pack, place the skills where they belong (`.claude/skills/project-brain/` for Claude Code; `thoughts/.pack-skills/` for others), copy `CONVENTIONS.md` into `thoughts/`, and run `init-project-brain` to scaffold the scaffold. You will answer a few questions: your project alias (e.g. `myapp`), the top-level tree domains you plan to use (e.g. `engineering / product / operations`), and your git remotes. After init completes, your project gains a `thoughts/` directory with `thread-index.md`, `current-state.md`, `tree/NODE.md`, and one `NODE.md` per domain you named.
+Your agent clones the pack, places the skills where they belong (`.claude/skills/project-brain/` for Claude Code; `project-brain/.pack-skills/` for others), copies `CONVENTIONS.md` into `project-brain/`, and runs `init-project-brain`.
 
-The entire setup is a single commit. No hidden files, no database.
+**rc4 behavior:** the default invocation asks **zero interactive questions**. It derives everything it needs from your environment:
+
+- `alias` — slugified directory name (`My App` → `my-app`)
+- `title` — title-cased directory name
+- `owner` — `git config user.email` (falls back to `$USER@localhost` with a TODO marker in CONVENTIONS.md § 10 if git isn't configured)
+
+After init, your project gains a `project-brain/` directory with `CONVENTIONS.md`, `config.yaml` (operational knobs — see below), `thread-index.md`, `current-state.md`, `tree/NODE.md`, an `engineering/NODE.md` default domain, and empty `threads/` + `archive/` dirs. A `.gitignore` is written alongside excluding `transcript.md` and `attachments/` by default.
+
+Three flags if you want something other than the default:
+
+- `init-project-brain --interactive` — walk through alias / title / owner prompts plus an optional "register in `~/.config/project-brain/projects.yaml`?" question for cross-project soft-link support.
+- `init-project-brain --init-git` — run `git init` + a scaffold commit. Otherwise no git ops (you run `git add && git commit` yourself when ready).
+- `init-project-brain --brain-path <dir>` — override the default `./project-brain/` location.
+
+The entire setup is one directory of files and (if you opt in) one commit. No hidden files, no database, no home-dir config required.
 
 ---
 
@@ -40,7 +54,7 @@ Your agent prompts for a slug (you answer `hire-backend-2`), a title (`Should we
 After you confirm, the agent runs `new-thread`. You now have:
 
 ```
-thoughts/threads/hire-backend-2/
+project-brain/threads/hire-backend-2/
   thread.md                    # frontmatter + your notes
   decisions-candidates.md      # candidate decisions (empty)
   open-questions.md            # open questions (empty)
@@ -73,7 +87,7 @@ promoted_at: []
 We've been running the backend with one full-time engineer for 18 months. Recently, the feature backlog has grown and oncall rotations are getting heavy. This thread explores whether hiring a second backend engineer is the right move, or if we should invest in tooling and automation instead.
 ```
 
-The thread is live. It appears in `thoughts/current-state.md` under "Active threads" immediately.
+The thread is live. It appears in `project-brain/current-state.md` under "Active threads" immediately.
 
 ### Step 2 — Sketch the candidates (`update-thread`)
 
@@ -137,7 +151,7 @@ You want reviewers to poke holes before you lock in. You call your agent: "Run a
 Your agent runs `multi-agent-debate --scope=thread --reviewers=3 --personas="red-team,fresh-eyes-reader,financial-realist:thinks we should maximize engineering velocity per dollar spent; challenges arguments that don't account for cost-benefit"`.
 
 The skill:
-1. Creates `thoughts/threads/hire-backend-2/debate/round-01/` and writes `feedback-in.md` with your brief.
+1. Creates `project-brain/threads/hire-backend-2/debate/round-01/` and writes `feedback-in.md` with your brief.
 2. Spawns three reviewer subagents (in Claude Code, these run in parallel). Each reads the thread, the decisions-candidates.md file, and the soft-linked Q2 planning doc.
 3. Red-team returns: "Hiring now is risky — what if the new hire doesn't work out? You're locked into 18+ months of severance liability. The tooling option hedges better."
 4. Fresh-eyes-reader returns: "I don't see any analysis of team velocity before/after. You need a concrete number for 'oncall is too heavy'."
@@ -168,7 +182,7 @@ Three concerns surfaced:
 Recommendation: Don't lock in yet. Address the cost and risk sections in the next update, then re-open for a second round if the team changes their answer.
 ```
 
-All of this lands in `thoughts/threads/hire-backend-2/debate/round-01/` as permanent artifacts. The thread's frontmatter picks up `last_debate_round: debate/round-01`. The thread **does not change status** — it stays `active/refining`. Debate is feedback, not a decision. You can ignore it, agree with it, or refine based on it.
+All of this lands in `project-brain/threads/hire-backend-2/debate/round-01/` as permanent artifacts. The thread's frontmatter picks up `last_debate_round: debate/round-01`. The thread **does not change status** — it stays `active/refining`. Debate is feedback, not a decision. You can ignore it, agree with it, or refine based on it.
 
 ### Step 4 — Lock in (`update-thread maturity --set locking`)
 
@@ -219,13 +233,13 @@ The thread is now complete. It is no longer in `current-state.md` (only active a
 
 ## Where to look next
 
-`thoughts/thread-index.md` now shows the hiring thread in the "Archived" table, with columns for slug, title, owner, created_at, and promotion history.
+`project-brain/thread-index.md` now shows the hiring thread in the "Archived" table, with columns for slug, title, owner, created_at, and promotion history.
 
-`thoughts/current-state.md` no longer lists it (only active and parked threads).
+`project-brain/current-state.md` no longer lists it (only active and parked threads).
 
 Run `skill: discover-threads --status=archived --owner=you@company.com` to find all your archived threads — good for "what did I decide on hiring?" queries six months from now.
 
-Open `thoughts/tree/operations/hiring/NODE.md`. It now lists `hire-backend-2.md` as a leaf. The tree is growing.
+Open `project-brain/tree/operations/hiring/NODE.md`. It now lists `hire-backend-2.md` as a leaf. The tree is growing.
 
 ---
 
@@ -251,7 +265,7 @@ One short scenario per cross-cutting skill:
 
 You didn't write any project-specific skill code. The pack is generic and handles the pipeline.
 
-You didn't configure a database. Everything is files in `thoughts/`.
+You didn't configure a database. Everything is files in `project-brain/`.
 
 You didn't set up any infrastructure. The tree is reviewable as code in a PR, and that's the whole point.
 

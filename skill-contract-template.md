@@ -30,7 +30,7 @@ Source vocabulary:
 
 - **user prompt** — if not supplied, ask via `AskUserQuestion`.
 - **frontmatter** — read from a specific file (always named).
-- **env / config** — `~/.ai/projects.yaml`, `CONVENTIONS.md`, or similar; skill must cite which.
+- **env / config** — `~/.config/project-brain/projects.yaml`, `CONVENTIONS.md`, or similar; skill must cite which.
 - **previous skill output** — passed from a preceding skill in a chain.
 - **runtime tool discovery** — e.g. which MCP servers are connected.
 

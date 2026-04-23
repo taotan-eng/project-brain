@@ -1,12 +1,12 @@
 ---
 name: promote-thread-to-tree
-description: Promote one or more decisions from an active thread into the shared knowledge tree via a pull request. Stages the leaves under thoughts/threads/[slug]/tree-staging/, cuts a promote/[slug] branch from the chosen base, copies the staged files into thoughts/tree/[domain]/, updates the parent NODE.md, opens a PR using assets/pr-body-templates/promote.md, and flips the thread to in-review while appending the PR URL to tree_prs. Use when the user says "promote this thread", "land these decisions", "open a promotion PR", or similar.
-version: 0.3.2
+description: Promote one or more decisions from an active thread into the shared knowledge tree via a pull request. Stages the leaves under project-brain/threads/[slug]/tree-staging/, cuts a promote/[slug] branch from the chosen base, copies the staged files into project-brain/tree/[domain]/, updates the parent NODE.md, opens a PR using assets/pr-body-templates/promote.md, and flips the thread to in-review while appending the PR URL to tree_prs. Use when the user says "promote this thread", "land these decisions", "open a promotion PR", or similar.
+version: 1.0.0-rc4
 pack: project-brain
 requires:
   - git
   - gh
-  - "read:~/.ai/projects.yaml"
+  - "read:~/.config/project-brain/projects.yaml"
   - "write:[brain-root]"
 ---
 
@@ -30,7 +30,7 @@ The skill is split across three commits on the promote branch, in this order: **
 |--------------------|-------------------------------------|----------|------------------------------------------------------------------------------------------|
 | `thread_slug`      | user prompt or cwd inference        | yes      | Slug of the source thread. If cwd is inside `threads/[slug]/`, default to that.          |
 | `leaves`           | user prompt                         | yes      | One or more decisions to promote. Default set = all `locking`-tagged entries in `decisions-candidates.md`. |
-| `target_remote`    | `~/.ai/projects.yaml` + user prompt | yes      | Remote name (§ 2). Implicit if the project has one `remotes` entry; prompted otherwise.  |
+| `target_remote`    | `~/.config/project-brain/projects.yaml` + user prompt | yes      | Remote name (§ 2). Implicit if the project has one `remotes` entry; prompted otherwise.  |
 | `base_branch`      | `--base` flag or user prompt        | yes      | PR base branch. Defaults to the selected remote's `default_base`; always confirmed.      |
 | `branch_suffix`    | user prompt                         | no       | Extra suffix for split promotions (e.g. `runtime-contract`). Nullable. See § 11.4.       |
 | `wave_number`      | derived                             | no       | If the thread has prior entries in `tree_prs`, computed as the next integer. Else 1.     |
@@ -49,44 +49,44 @@ Prompt strategy: one `AskUserQuestion` call collects `leaves` (multi-select from
 
 The skill **refuses** if any of these are not met.
 
-1. Current working directory resolves to a brain root per § 1 (a `thoughts/` directory containing `CONVENTIONS.md`).
-2. No potentially sensitive files are present in the thread directory or its `tree-staging/` area (unless `--allow-secrets` is set). Scans for files matching (case-insensitive glob): `.env`, `.env.*`, `*.key`, `*.pem`, `*.p12`, `*.pfx`, `id_rsa`, `id_dsa`, `id_ecdsa`, `id_ed25519`, `secrets.yaml`, `secrets.yml`, `secrets.json`, `credentials.json`, `credentials.yaml`, `*.gpg`, `*.enc`. These files should not be in version control under `thoughts/threads/` — see CONVENTIONS § 1 (threads are tracked in git). If any match, refuse with a list and suggest adding to `.gitignore` or removing before promoting. Cross-reference README noting that threads are version-controlled.
-3. `~/.ai/projects.yaml` has an entry for the thread's `primary_project` with a `remotes` list and resolvable `default_remote` (§ 2).
+1. Current working directory resolves to a brain root per § 1 (a `project-brain/` directory containing `CONVENTIONS.md`).
+2. No potentially sensitive files are present in the thread directory or its `tree-staging/` area (unless `--allow-secrets` is set). Scans for files matching (case-insensitive glob): `.env`, `.env.*`, `*.key`, `*.pem`, `*.p12`, `*.pfx`, `id_rsa`, `id_dsa`, `id_ecdsa`, `id_ed25519`, `secrets.yaml`, `secrets.yml`, `secrets.json`, `credentials.json`, `credentials.yaml`, `*.gpg`, `*.enc`. These files should not be in version control under `project-brain/threads/` — see CONVENTIONS § 1 (threads are tracked in git). If any match, refuse with a list and suggest adding to `.gitignore` or removing before promoting. Cross-reference README noting that threads are version-controlled.
+3. `~/.config/project-brain/projects.yaml` has an entry for the thread's `primary_project` with a `remotes` list and resolvable `default_remote` (§ 2).
 4. `git` and `gh` are on PATH; `gh auth status` reports authenticated for the target remote's host.
 5. Working tree is clean on `main`. No uncommitted changes anywhere in the repository (full `git status --porcelain` with no pathspec). Scoped checks are insufficient because stray staging in unrelated paths can leak into the promote branch. Error message includes the full `git status --porcelain` output for user diagnosis.
-6. Source thread exists at `thoughts/threads/[thread_slug]/thread.md` with `status: active`. Threads in `in-review` or `archived` cannot be promoted without cycling first.
-7. Each selected leaf has a target `tree_domain` resolvable inside `thoughts/tree/`. If a leaf needs a new sub-tree, the skill creates the directory and a scaffolded `NODE.md` in the same commit.
-8. `thoughts/tree/[domain]/[leaf-slug].md` does not already exist. If it does, the skill offers `-2`, `-3` suffixes or points the user at `supersede-leaf` (separate skill, not in this pack yet).
+6. Source thread exists at `project-brain/threads/[thread_slug]/thread.md` with `status: active`. Threads in `in-review` or `archived` cannot be promoted without cycling first.
+7. Each selected leaf has a target `tree_domain` resolvable inside `project-brain/tree/`. If a leaf needs a new sub-tree, the skill creates the directory and a scaffolded `NODE.md` in the same commit.
+8. `project-brain/tree/[domain]/[leaf-slug].md` does not already exist. If it does, the skill offers `-2`, `-3` suffixes or points the user at `supersede-leaf` (separate skill, not in this pack yet).
 9. No branch named `promote/[thread_slug]` exists locally or on the target remote. If it does, the skill resolves with `-wave_number` suffix and asks the user to confirm.
 
 ## Process
 
 Each step is atomic. Failure at any step leaves the repo in a recoverable state — either on `main` with nothing changed, or on the promote branch with a committed staging snapshot the user can inspect.
 
-1. **Resolve inputs.** Infer `thread_slug` from cwd if possible. Read `decisions-candidates.md`, present `locking` entries to the user via `AskUserQuestion` for leaf selection. Read `~/.ai/projects.yaml` and resolve `target_remote`. Prompt for `base_branch` with the resolved remote's `default_base` as the preview value.
+1. **Resolve inputs.** Infer `thread_slug` from cwd if possible. Read `decisions-candidates.md`, present `locking` entries to the user via `AskUserQuestion` for leaf selection. Read `~/.config/project-brain/projects.yaml` and resolve `target_remote`. Prompt for `base_branch` with the resolved remote's `default_base` as the preview value.
 2. **Validate preconditions.** Run checks 1–9 above. On any failure, stop and report the specific precondition.
 3. **Stage leaves (commit 1 of 3).** For each selected leaf:
-   - Copy `assets/leaf-template.md` into `thoughts/threads/[thread_slug]/tree-staging/[domain]/[leaf-slug].md`.
+   - Copy `assets/leaf-template.md` into `project-brain/threads/[thread_slug]/tree-staging/[domain]/[leaf-slug].md`.
    - Fill frontmatter: `node_type: leaf`, `domain: [domain]`, `source_thread: [thread_slug]`, `status: draft`, `created_at` from `date -u`, `owner` from `git config user.email`, `primary_project` inherited.
    - Extract body content from the corresponding entry in `decisions-candidates.md` (§ Context / § Decision / § Consequences / § Alternatives sections). Leave any section the thread did not populate as the template placeholder — the review cycle fills the gaps.
-   - Stage and commit: `git checkout -b promote/[thread_slug][-wave-suffix]` from `[target_remote]/[base_branch]`, then `git add thoughts/threads/[thread_slug]/tree-staging/ && git commit -m "promote([thread_slug]): stage [N] leaves for [domain]"`.
+   - Stage and commit: `git checkout -b promote/[thread_slug][-wave-suffix]` from `[target_remote]/[base_branch]`, then `git add project-brain/threads/[thread_slug]/tree-staging/ && git commit -m "promote([thread_slug]): stage [N] leaves for [domain]"`.
 4. **Run `verify-tree --staging`** (if installed). This catches obvious frontmatter issues before the files move into the tree proper. If the validator fails, stop — user must fix in `tree-staging/` and re-invoke.
-5. **Land leaves into the tree (commit 2 of 3).** Move each staged file from `thoughts/threads/[thread_slug]/tree-staging/[domain]/[leaf-slug].md` to `thoughts/tree/[domain]/[leaf-slug].md`. For each landed leaf:
+5. **Land leaves into the tree (commit 2 of 3).** Move each staged file from `project-brain/threads/[thread_slug]/tree-staging/[domain]/[leaf-slug].md` to `project-brain/tree/[domain]/[leaf-slug].md`. For each landed leaf:
    - Keep `status: draft` in its frontmatter. Do not flip to `in-review` yet — the PR URL isn't known, so `tree_prs` on the thread is still empty, and § 4.2 forbids `in-review` without a populated `tree_prs`.
    - Append the leaf to the parent `NODE.md`'s `## Leaves` section. Create `NODE.md` from `assets/NODE-template.md` if it doesn't exist.
    - If a new sub-tree was created, insert it into the grandparent `NODE.md`'s `## Sub-nodes` section as well.
-6. **Sync thread maturity on the promote branch.** In `thoughts/threads/[thread_slug]/thread.md`, flip `maturity: refining → locking` (if not already). Leave `status: active` — it flips to `in-review` only after PR URL is known.
-7. **Commit landing.** `git add thoughts/tree/ thoughts/threads/[thread_slug]/ && git commit -m "promote([thread_slug]): land [N] leaves into [domain]"`. Use `assets/commit-templates/promote.txt` as the template.
+6. **Sync thread maturity on the promote branch.** In `project-brain/threads/[thread_slug]/thread.md`, flip `maturity: refining → locking` (if not already). Leave `status: active` — it flips to `in-review` only after PR URL is known.
+7. **Commit landing.** `git add project-brain/tree/ project-brain/threads/[thread_slug]/ && git commit -m "promote([thread_slug]): land [N] leaves into [domain]"`. Use `assets/commit-templates/promote.txt` as the template.
 8. **Push branch.** `git push -u [target_remote] promote/[thread_slug][-wave-suffix]`.
 9. **Open PR.** `gh pr create --base [base_branch] --head promote/[thread_slug][-wave-suffix] --repo [origin-from-remote-url] --title "promote: [Thread Title] → [domain]" --body-file [rendered-from-assets/pr-body-templates/promote.md]`. Render the template with leaf list, source thread link, and debate-readiness notes.
 10. **Parse PR URL.** Capture the URL printed by `gh pr create` (or query `gh pr view --json url`).
 11. **Flip-to-in-review (commit 3 of 3 on promote branch).** In a single commit on the promote branch:
     - For each landed leaf, flip `status: draft → in-review`.
-    - In `thoughts/threads/[thread_slug]/thread.md`, flip `status: active → in-review` and append the PR URL to `tree_prs`.
+    - In `project-brain/threads/[thread_slug]/thread.md`, flip `status: active → in-review` and append the PR URL to `tree_prs`.
 
     Commit: `promote([thread_slug]): open review (PR [url])`. Push. This is the first commit on which § 4.2's `in-review` invariant is satisfied — leaves and thread are synchronized before verify-tree could ever see an inconsistent state on this branch.
-12. **Sync main (bookkeeping commit).** `git checkout main`. In `thoughts/threads/[thread_slug]/thread.md`, flip `status: active → in-review` and `maturity: refining → locking`, append the PR URL to `tree_prs`. Stage the thread directory: `git add thoughts/threads/[slug]/`. Then invoke `verify-tree --rebuild-index` to regenerate `thoughts/thread-index.md` and `thoughts/current-state.md`.
-    - If the rebuild returns exit 0: stage both index files and commit: `git add thoughts/ && git commit -m "chore([thread_slug]): link promote PR [url]"`. Push `main`. Main now mirrors the thread's PR-open state even though the leaves themselves don't reach main until merge.
+12. **Sync main (bookkeeping commit).** `git checkout main`. In `project-brain/threads/[thread_slug]/thread.md`, flip `status: active → in-review` and `maturity: refining → locking`, append the PR URL to `tree_prs`. Stage the thread directory: `git add project-brain/threads/[slug]/`. Then invoke `verify-tree --rebuild-index` to regenerate `project-brain/thread-index.md` and `project-brain/current-state.md`.
+    - If the rebuild returns exit 0: stage both index files and commit: `git add project-brain/ && git commit -m "chore([thread_slug]): link promote PR [url]"`. Push `main`. Main now mirrors the thread's PR-open state even though the leaves themselves don't reach main until merge.
     - If the rebuild returns exit 1 or 2: abort and report the error; the thread frontmatter is in an inconsistent state and requires manual repair.
 13. **Report.** Return the PR URL, all three promote-branch commit SHAs, the bookkeeping commit SHA on main, and a suggestion to begin review.
 
@@ -118,7 +118,7 @@ Print the plan to stdout as a numbered list of steps in the same order as `## Pr
 | `thread-index.md`                          | edit      | Row updated to `in-review` with PR URL cell.                           |
 | `current-state.md`                         | edit      | Entry moves from "Active threads" to "Threads in review".              |
 
-Paths are relative to the brain root (`thoughts/`). Shell commands in § Process retain the `thoughts/` prefix because they run from project root.
+Paths are relative to the brain root (`project-brain/`). Shell commands in § Process retain the `project-brain/` prefix because they run from project root.
 
 ### Git operations
 
@@ -174,17 +174,26 @@ The promote branch and main are kept in sync on the thread frontmatter by step 1
 
 - A promote branch exists on the target remote with three commits (stage, land, flip-to-in-review).
 - An open PR references all three commits, with body rendered from the promote template.
-- On the promote branch: `thoughts/tree/[domain]/` contains one new leaf file per promoted decision, each in `status: in-review`, each listed in the domain's `NODE.md`. Thread is `status: in-review, maturity: locking` with the PR URL in `tree_prs`.
+- On the promote branch: `project-brain/tree/[domain]/` contains one new leaf file per promoted decision, each in `status: in-review`, each listed in the domain's `NODE.md`. Thread is `status: in-review, maturity: locking` with the PR URL in `tree_prs`.
 - On main: thread is `status: in-review, maturity: locking` with the PR URL in `tree_prs`. The tree itself is unchanged on main until the PR merges.
 - `thread-index.md` and `current-state.md` on main reflect the in-review state (autogenerated by step 12).
 - `verify-tree` passes on both branches — on main (no leaves yet, thread consistent) and on the promote branch (leaves in-review with thread's tree_prs populated).
+
+### Verbosity contract
+
+Reads `verbosity` from `<brain>/config.yaml` (env override: `PROJECT_BRAIN_VERBOSITY`). Defaults to `terse`.
+
+- **terse** (default): one acknowledgement line naming the action + target, then `Done.` No tool-output echo, no "let me..." preamble.
+  - Example output: `Promoting thread alpha to tree-staging and opening PR. Done.`
+- **normal**: structured summary of what changed (file paths, artifact counts), no conversational framing.
+- **verbose**: full narration (pre-rc4 default). Use for debugging.
 
 ## Failure modes
 
 | Failure                                      | Cause                                                               | Response                                                 |
 |----------------------------------------------|---------------------------------------------------------------------|----------------------------------------------------------|
 | Sensitive file(s) detected                    | Pattern match against secret-file glob list in thread or tree-staging | refuse — list offending files; suggest `.gitignore` or removal; hint at `--allow-secrets` for known non-sensitive files |
-| Dirty working tree (full repo)                | Uncommitted changes anywhere in the repo (not just `thoughts/`)    | refuse — show full `git status --porcelain` output; ask user to stash or commit |
+| Dirty working tree (full repo)                | Uncommitted changes anywhere in the repo (not just `project-brain/`)    | refuse — show full `git status --porcelain` output; ask user to stash or commit |
 | No `locking` candidates                       | Thread hasn't matured enough                                        | refuse — suggest `multi-agent-debate` or more refinement |
 | Leaf slug collision in tree                   | `tree/[domain]/[leaf].md` already exists                            | prompt — offer `-2`/`-3` or direct to `supersede-leaf`    |
 | Branch name collision                         | `promote/[slug]` exists locally or on remote                        | prompt — offer wave-suffix or direct to a cleanup flow   |

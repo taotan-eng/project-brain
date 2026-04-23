@@ -1,12 +1,12 @@
 ---
 name: finalize-promotion
-description: Close out a merged promotion PR. Verifies the PR is merged via gh, flips each landed leaf from in-review to decided on main, appends one entry to promoted_to plus one to promoted_at per leaf, and either returns the thread to active/refining for further work or archives it to thoughts/archive/. Updates thread-index.md and current-state.md to reflect the new state. Use when the user says "finalize the promotion", "close out the PR", "the promotion merged", "archive this thread", or after observing a promote PR go green.
-version: 0.3.2
+description: Close out a merged promotion PR. Verifies the PR is merged via gh, flips each landed leaf from in-review to decided on main, appends one entry to promoted_to plus one to promoted_at per leaf, and either returns the thread to active/refining for further work or archives it to project-brain/archive/. Updates thread-index.md and current-state.md to reflect the new state. Use when the user says "finalize the promotion", "close out the PR", "the promotion merged", "archive this thread", or after observing a promote PR go green.
+version: 1.0.0-rc4
 pack: project-brain
 requires:
   - git
   - gh
-  - "read:~/.ai/projects.yaml"
+  - "read:~/.config/project-brain/projects.yaml"
   - "write:[brain-root]"
 ---
 
@@ -29,9 +29,9 @@ The skill intentionally does not trigger on its own. There is no git hook, no CI
 |---------------------|---------------------------------|----------|-------------------------------------------------------------------------------------------------|
 | `thread_slug`       | user prompt or cwd inference    | yes      | Slug of the source thread. Defaults to the most recently touched `in-review` thread if unambiguous. |
 | `pr_url`            | derived or user prompt          | yes      | The merged promote PR. If the thread has exactly one unfinalized entry in `tree_prs`, pick it automatically; otherwise prompt. |
-| `disposition`       | user prompt                     | yes      | Either `continue` (thread re-enters `active/refining`) or `archive` (thread moves to `thoughts/archive/<slug>/`). |
+| `disposition`       | user prompt                     | yes      | Either `continue` (thread re-enters `active/refining`) or `archive` (thread moves to `project-brain/archive/<slug>/`). |
 | `merge_commit`      | derived from `gh pr view`       | yes      | SHA of the merge commit on the PR's base branch. Used for the audit trail; not stored in frontmatter. |
-| `--brain=<path>`    | user prompt or cwd inference    | no       | Absolute path to the brain root. Defaults to the nearest ancestor `thoughts/` directory.        |
+| `--brain=<path>`    | user prompt or cwd inference    | no       | Absolute path to the brain root. Defaults to the nearest ancestor `project-brain/` directory.        |
 
 Prompt strategy: infer `thread_slug` from cwd; infer `pr_url` from `tree_prs[last]` when there's only one unfinalized. Ask `disposition` via a single `AskUserQuestion` with two options ("Keep thread active — more to promote" / "Archive thread — this was the last wave"). Default-preview `archive` if `decisions-candidates.md` has no remaining `locking` entries, otherwise default-preview `continue`.
 
@@ -41,13 +41,13 @@ Prompt strategy: infer `thread_slug` from cwd; infer `pr_url` from `tree_prs[las
 
 The skill **refuses** if any of these are not met.
 
-1. Current working directory is inside a brain root (§ 1). Resolved via `thoughts/CONVENTIONS.md`.
+1. Current working directory is inside a brain root (§ 1). Resolved via `project-brain/CONVENTIONS.md`.
 2. `gh` is on PATH and authenticated for the host in `pr_url`.
 3. `gh pr view <pr_url> --json state,mergedAt,mergeCommit` returns `state: "MERGED"` with a non-empty `mergeCommit.oid`. Any other state (OPEN, CLOSED-without-merge) is a hard refuse — closed-without-merge is handled by `discard-promotion` (not yet drafted).
 4. Main is checked out with a clean working tree (`git status --porcelain` empty).
 5. Main has been brought up to date with the remote (`git fetch <default_remote> && git merge-base --is-ancestor <merge_commit> HEAD` returns true). If not, the skill runs `git pull --ff-only` against the remote; refuses if fast-forward isn't possible.
-6. `thoughts/threads/[thread_slug]/thread.md` exists with `status: in-review` and `pr_url ∈ tree_prs`.
-7. Every leaf introduced by the PR exists on main at its declared `domain` path with `status: in-review` and `source_thread: [thread_slug]`. The leaf list is obtained by diffing the merge commit against its first parent and filtering for `thoughts/tree/**/*.md` adds (excluding `NODE.md`). Crucially, this inspection must be done on the merge commit itself (not the promote branch's HEAD), to defend against cases where the promote branch was rebased or force-pushed and in-review state flips were lost. For each added leaf, run `git show <merge-commit>:<leaf-path>` and parse the frontmatter to verify `status: in-review`. If any leaf is not in-review on the merge commit, refuse with: `finalize-promotion refuses: leaf <path> is not in in-review state on the merge commit (found: <actual-status>). This can happen if the promote branch was rebased or force-pushed, losing the flip-to-in-review commit. Manual repair required: revert to the pre-merge state and re-run promote-thread-to-tree, or edit the leaves to in-review and create a fixup commit before re-running finalize.`
+6. `project-brain/threads/[thread_slug]/thread.md` exists with `status: in-review` and `pr_url ∈ tree_prs`.
+7. Every leaf introduced by the PR exists on main at its declared `domain` path with `status: in-review` and `source_thread: [thread_slug]`. The leaf list is obtained by diffing the merge commit against its first parent and filtering for `project-brain/tree/**/*.md` adds (excluding `NODE.md`). Crucially, this inspection must be done on the merge commit itself (not the promote branch's HEAD), to defend against cases where the promote branch was rebased or force-pushed and in-review state flips were lost. For each added leaf, run `git show <merge-commit>:<leaf-path>` and parse the frontmatter to verify `status: in-review`. If any leaf is not in-review on the merge commit, refuse with: `finalize-promotion refuses: leaf <path> is not in in-review state on the merge commit (found: <actual-status>). This can happen if the promote branch was rebased or force-pushed, losing the flip-to-in-review commit. Manual repair required: revert to the pre-merge state and re-run promote-thread-to-tree, or edit the leaves to in-review and create a fixup commit before re-running finalize.`
 8. For each new `NODE.md` introduced by the PR (sub-tree directories), `status: decided` is already set (this is the only legal state per § 4.3 — `promote-thread-to-tree` writes it that way, so no flip is needed here; the precondition just guards against malformed landings).
 
 ## Process
@@ -56,12 +56,12 @@ Each step is atomic. Failure at step N leaves main in whatever state it was afte
 
 1. **Resolve inputs.** Infer `thread_slug` from cwd; resolve `pr_url` from `tree_prs` unfinalized entries; prompt for `disposition`. Query `gh pr view` to capture `merge_commit` and `merged_at`.
 2. **Validate preconditions.** Run checks 1–8. On any failure, stop and report the specific precondition.
-3. **Enumerate merged leaves.** From `git diff-tree --no-commit-id --name-only -r <merge_commit>` filtered to `thoughts/tree/**/*.md` added paths (excluding `NODE.md`), build the list of `[leaf_path, domain, leaf_slug]` tuples. Keep the PR-declared order for stable `promoted_to` ordering.
+3. **Enumerate merged leaves.** From `git diff-tree --no-commit-id --name-only -r <merge_commit>` filtered to `project-brain/tree/**/*.md` added paths (excluding `NODE.md`), build the list of `[leaf_path, domain, leaf_slug]` tuples. Keep the PR-declared order for stable `promoted_to` ordering.
 4. **Flip leaves (commit 1 of 1).** For each leaf in the enumerated list:
-    - In `thoughts/tree/[domain]/[leaf-slug].md`, flip `status: in-review → decided` in frontmatter.
+    - In `project-brain/tree/[domain]/[leaf-slug].md`, flip `status: in-review → decided` in frontmatter.
     - No other leaf fields are touched — `source_thread`, `domain`, `impl_spec` (empty), `built_in` (empty) all stay as written by `promote-thread-to-tree`.
 5. **Pre-commit verification of thread state.** Just before committing, re-read the thread's frontmatter from disk (not from the skill's in-memory copy at step 1). Verify that `tree_prs[-1]` (the most recent PR URL) has not already been added to `promoted_to`. If it has been added, another `finalize-promotion` run has already reconciled this PR; refuse with: `finalize-promotion refuses: tree_prs[-1] (<pr-url>) is already finalized (found in promoted_to). Another finalize run may have completed; pull and check thread state.` Abort without committing. This guards against concurrent or stale invocations.
-6. **Update thread frontmatter (same commit).** In `thoughts/threads/[thread_slug]/thread.md`:
+6. **Update thread frontmatter (same commit).** In `project-brain/threads/[thread_slug]/thread.md`:
     - For each leaf in step 3, append one entry to `promoted_to` (the full tree path, e.g. `tree/engineering/ir/spec-v1.md`) and one matching entry to `promoted_at` (the PR's `merged_at` timestamp). Parallel-list invariant (§ 9) is satisfied because the same loop appends to both.
     - If `disposition == continue`:
        - `status: in-review → active`
@@ -73,15 +73,15 @@ Each step is atomic. Failure at step N leaves main in whatever state it was afte
        - `archived_at: <merged_at>` written (§ 3.2).
        - `archived_by: <git config user.email>` written.
        - Prepare to move the thread directory in step 7.
-7. **Move to archive (archive disposition only).** `git mv thoughts/threads/[thread_slug] thoughts/archive/[thread_slug]`. Update any relative links to the thread from elsewhere (most commonly, leaves' `source_thread: [slug]` — unaffected since it's a slug, not a path).
+7. **Move to archive (archive disposition only).** `git mv project-brain/threads/[thread_slug] project-brain/archive/[thread_slug]`. Update any relative links to the thread from elsewhere (most commonly, leaves' `source_thread: [slug]` — unaffected since it's a slug, not a path).
 8. **Update `thread-index.md`.** **(Removed in 0.9.0-alpha.2: index files are now autogenerated. See Final step below.)**
 9. **Update `current-state.md`.** **(Removed in 0.9.0-alpha.2: index files are now autogenerated. See Final step below.)**
-10. **Commit staging.** Stage the leaf updates and thread directory: `git add thoughts/tree/ thoughts/threads/[slug]/ thoughts/archive/[slug]/` (appropriate subset per disposition). The index files will be staged in the Final step.
+10. **Commit staging.** Stage the leaf updates and thread directory: `git add project-brain/tree/ project-brain/threads/[slug]/ project-brain/archive/[slug]/` (appropriate subset per disposition). The index files will be staged in the Final step.
 11. **Final step — rebuild indexes**
 
-Invoke `verify-tree --rebuild-index` to regenerate `thoughts/thread-index.md` and `thoughts/current-state.md` from the now-updated per-thread frontmatter.
+Invoke `verify-tree --rebuild-index` to regenerate `project-brain/thread-index.md` and `project-brain/current-state.md` from the now-updated per-thread frontmatter.
 
-- If the rebuild returns exit 0: proceed to commit; stage both index files along with the other changes in a single commit: `git add thoughts/ && git commit -m "chore([thread_slug]): finalize promotion — [N] leaves decided ([continue|archive])"`.
+- If the rebuild returns exit 0: proceed to commit; stage both index files along with the other changes in a single commit: `git add project-brain/ && git commit -m "chore([thread_slug]): finalize promotion — [N] leaves decided ([continue|archive])"`.
 - If the rebuild returns exit 1 (source validation failure): abort this skill's commit. Report the thread(s) that failed source validation — they indicate schema violations introduced (or already present) in this operation. Fix the underlying thread before retrying this skill.
 - If the rebuild returns exit 2 (write / verify failure): abort. The live index files are unchanged (atomic write). Report the error; this is typically a filesystem / permissions issue.
 
@@ -123,7 +123,7 @@ Print the plan to stdout in a numbered list matching the `## Process` steps. Und
 | `git fetch [default_remote]`                | step 2  | Ensures precondition 5 can be evaluated against current remote. |
 | `git pull --ff-only`                        | step 2  | If fast-forward fits; refuses otherwise.                        |
 | `git mv threads/[slug] archive/[slug]`      | step 7  | Archive disposition only.                                       |
-| `git add thoughts/ && git commit`           | step 11 | Single commit — frontmatter flips + regenerated index files + (opt) move. |
+| `git add project-brain/ && git commit`           | step 11 | Single commit — frontmatter flips + regenerated index files + (opt) move. |
 | `git push [default_remote] main`            | step 12 | Remote's `default_remote` is resolved via `projects.yaml`.      |
 
 ### External calls
@@ -170,6 +170,15 @@ No leaf fields other than `status` are flipped here — `source_thread`, `domain
 - `thread-index.md` and `current-state.md` reflect the post-finalization state (autogenerated).
 - `verify-tree` passes on main.
 - All preconditions of `derive-impl-spec` are now satisfied for every `decided` leaf from this wave.
+
+### Verbosity contract
+
+Reads `verbosity` from `<brain>/config.yaml` (env override: `PROJECT_BRAIN_VERBOSITY`). Defaults to `terse`.
+
+- **terse** (default): one acknowledgement line naming the action + target, then `Done.` No tool-output echo, no "let me..." preamble.
+  - Example output: `Finalizing promotion of thread alpha. Done.`
+- **normal**: structured summary of what changed (file paths, artifact counts), no conversational framing.
+- **verbose**: full narration (pre-rc4 default). Use for debugging.
 
 ## Failure modes
 

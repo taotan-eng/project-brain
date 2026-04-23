@@ -1,11 +1,10 @@
 ---
 name: discard-thread
 description: Kill an active or parked thread before it was ever promoted. Flips status to archived, writes archived_at plus archived_by plus discard_reason, git mv's the thread directory from threads/ to archive/, removes the thread's row from Active or Parked sections of thread-index.md and adds it to Archived, and commits. Refuses if tree_prs is non-empty (route to discard-promotion or finalize-promotion instead) or if the thread is in-review. Use when the user says "discard this thread", "drop this idea", "kill this thread", "abandon <slug>", or "archive this — it was never promoted".
-version: 0.2.2
+version: 1.0.0-rc4
 pack: project-brain
 requires:
-  - git
-  - "read:~/.ai/projects.yaml"
+  - "read:<brain>/config.yaml"
   - "write:[brain-root]"
 ---
 
@@ -29,7 +28,7 @@ Unlike `finalize-promotion`'s archive branch (which happens after a PR merged an
 |-------------------|---------------------------------|----------|-------------------------------------------------------------------------------------------------|
 | `thread_slug`     | user prompt or cwd inference    | yes      | Slug of the thread. Defaults to the thread whose directory contains cwd.                        |
 | `discard_reason`  | user prompt                     | yes      | Short "why dropped". 1–3 sentences; goes into `discard_reason` frontmatter and the Archived row of `thread-index.md`. Required — unreasoned discards are hostile to future audits. |
-| `--brain=<path>`  | user prompt or cwd inference    | no       | Absolute path to the brain root. Defaults to the nearest ancestor `thoughts/` directory.        |
+| `--brain=<path>`  | user prompt or cwd inference    | no       | Absolute path to the brain root. Defaults to the nearest ancestor `project-brain/` directory.        |
 | `--dry-run`       | boolean                         | no       | Print the plan (status flip, archive metadata, git mv, commit message) without performing any file writes, git mutations, or audit-log writes. See Process § Dry-run semantics. |
 
 Prompt strategy: resolve `thread_slug` from cwd. Always prompt for `discard_reason` even if the user supplied an inline "because X" in their message — discarded threads are often re-read during quarterly reviews and need a standalone explanation.
@@ -38,14 +37,14 @@ Prompt strategy: resolve `thread_slug` from cwd. Always prompt for `discard_reas
 
 The skill **refuses** if any of these are not met.
 
-1. Current working directory is inside a brain root (a `thoughts/` directory containing `CONVENTIONS.md`) or an explicit `--brain=<path>` was given.
-2. `thoughts/threads/[thread_slug]/thread.md` exists.
+1. Current working directory is inside a brain root (a `project-brain/` directory containing `CONVENTIONS.md`) or an explicit `--brain=<path>` was given.
+2. `project-brain/threads/[thread_slug]/thread.md` exists.
 3. Thread `status` is `active` or `parked`. `in-review` threads have a live PR (use `discard-promotion` after closing it or `finalize-promotion` after merging); `archived` threads are already terminal.
 4. `tree_prs` is empty or absent. A non-empty `tree_prs` means the thread has promotion history, so the correct exit is one of `discard-promotion` (if the most recent PR is CLOSED-unmerged), `finalize-promotion` with `archive` disposition (if MERGED), or manual reconciliation (if still OPEN). The skill refuses and names the right alternative based on `gh pr view` of the most recent entry.
 5. `discard_reason` is non-empty.
-6. Working tree has no uncommitted changes to `thoughts/thread-index.md`, `thoughts/current-state.md`, or the thread's `thread.md`.
+6. Working tree has no uncommitted changes to `project-brain/thread-index.md`, `project-brain/current-state.md`, or the thread's `thread.md`.
 7. `git config user.email` returns a value (used to populate `archived_by`).
-8. `thoughts/archive/[thread_slug]/` does not exist. A collision suggests an earlier discard was partially rolled back; refuse rather than overwriting.
+8. `project-brain/archive/[thread_slug]/` does not exist. A collision suggests an earlier discard was partially rolled back; refuse rather than overwriting.
 
 ## Process
 
@@ -53,43 +52,40 @@ Each step is atomic. Failure at step N leaves the tree in whatever state it was 
 
 1. **Resolve inputs.** Infer `thread_slug` from cwd. Prompt for `discard_reason`.
 2. **Validate preconditions.** Run checks 1–8. If `tree_prs` is non-empty (precondition 4 fails), run `gh pr view` on the most recent entry and report which sibling skill to use. On any other failure, stop and name the precondition.
-3. **Compute timestamp.** Run `date -u +%Y-%m-%dT%H:%M:%SZ` for `archived_at`.
-4. **Flip frontmatter.** In `thoughts/threads/[thread_slug]/thread.md`:
+3. **Compute timestamp.** Capture the current ISO-8601 timestamp for `archived_at`.
+4. **Flip frontmatter.** In `project-brain/threads/[thread_slug]/thread.md`:
     - `status: active|parked → archived`.
     - Remove `maturity` field. Archived threads do not carry a maturity; § 4.1 says "archived has no maturity."
     - Add `archived_at: <timestamp>` and `archived_by: <git config user.email>`.
     - Add `discard_reason: <string>`.
     - If coming from `parked`: remove `parked_at`, `parked_by`, `parked_reason`, and `unpark_trigger` (if present). These fields are park-only metadata and must not persist into the archived record.
-5. **Move to archive.** `git mv thoughts/threads/[thread_slug] thoughts/archive/[thread_slug]`. This moves the entire thread directory — `thread.md`, `decisions-candidates.md`, `open-questions.md`, and any companions — in a single git operation that preserves history.
-6. **Update `thread-index.md`.** **(Removed in 0.9.0-alpha.2: index files are now autogenerated. See Final step below.)**
-7. **Update `current-state.md`.** **(Removed in 0.9.0-alpha.2: index files are now autogenerated. See Final step below.)**
-8. **Commit staging.** Stage the moved archive directory (the `git mv` is already staged): `git add thoughts/archive/[slug]/`. The index files will be staged in the Final step.
-9. **Final step — rebuild indexes**
+5. **Move to archive.** Use file-tool to move the entire thread directory from `project-brain/threads/[thread_slug]` to `project-brain/archive/[thread_slug]`. This moves `thread.md`, `decisions-candidates.md`, `open-questions.md`, and any companions.
 
-Invoke `verify-tree --rebuild-index` to regenerate `thoughts/thread-index.md` and `thoughts/current-state.md` from the now-updated per-thread frontmatter.
+6. **Append session transcript** (if `transcript_logging=on` in `<brain>/config.yaml`, default). Append this session's transcript — following the entry schema in CONVENTIONS § 2.5.1 — to `project-brain/archive/[slug]/transcript.md`.
 
-- If the rebuild returns exit 0: proceed to commit; stage both index files along with the archive move in a single commit: `git add thoughts/ && git commit -m "chore([slug]): discard thread — [reason truncated to 50 chars]"`.
-- If the rebuild returns exit 1 (source validation failure): abort this skill's commit. Report the thread(s) that failed source validation — they indicate schema violations introduced (or already present) in this operation. Fix the underlying thread before retrying this skill.
-- If the rebuild returns exit 2 (write / verify failure): abort. The live index files are unchanged (atomic write). Report the error; this is typically a filesystem / permissions issue.
+7. **Final step — rebuild indexes**
 
-Rationale: per CONVENTIONS § 1, `thread-index.md` and `current-state.md` are autogenerated projections of per-thread frontmatter. This skill maintains its invariants by updating the per-thread source; the aggregate view is refreshed as the last step so that (a) index files always reflect post-operation state, and (b) concurrent skills never collide on hand-edits of the aggregate files.
+Invoke `verify-tree --rebuild-index` to regenerate `project-brain/thread-index.md` and `project-brain/current-state.md` from the now-updated per-thread frontmatter.
 
-10. **Report.** Return the commit SHA, the new thread path (`archive/[slug]/`), and a closing note (see § Outputs).
+- If the rebuild returns exit 0: proceed; stage both index files along with the archive move.
+- If the rebuild returns exit 1 (source validation failure): abort. Report the thread(s) that failed source validation. Fix before retrying.
+- If the rebuild returns exit 2 (write / verify failure): abort. The live index files are unchanged (atomic write). Report the error.
 
-No automatic push. Users who want the discard visible to collaborators can push manually.
+**Git deferred:** This skill does NOT invoke git. The user runs `git mv` and `git commit` themselves (or uses file-tool equivalents).
+
+8. **Report.** Return the new thread path (`archive/[slug]/`) and a closing note.
 
 ### Dry-run semantics
 
 When `--dry-run` is set:
 
-1. **Run all preconditions** (steps 1–2 above), including brain-root existence, thread existence, status checks, tree_prs check, and git-state cleanliness. Exit 1 if any precondition fails.
-2. **Compute the full plan:** print the new thread path (`archive/<slug>/`), the frontmatter changes (status flip, maturity removal, archive metadata add, park metadata removal if coming from parked), the `git mv` operation, and the commit message.
-3. **Invoke `verify-tree --rebuild-index --dry-run`** to surface any index-rebuild failures (step 9). If that fails, print the rebuild error and exit 1.
-4. **Write NOTHING to disk:** neither frontmatter edits, nor git mv operations, nor the audit log.
-5. **Invoke NO git mutations:** no `git mv`, no `git add`, no `git commit`. Read-only git operations are allowed.
-6. **Exit 0** if the plan would succeed end-to-end, **exit 1** if any precondition or rebuild-dry-run check failed, **exit 2** on unexpected error.
+1. **Run all preconditions** (steps 1–2 above), including brain-root existence, thread existence, status checks, tree_prs check. Exit 1 if any fail.
+2. **Compute the full plan:** print the new thread path (`archive/<slug>/`), the frontmatter changes, the directory move, and the rebuild step.
+3. **Invoke `verify-tree --rebuild-index --dry-run`** to surface any index-rebuild failures. If that fails, print the error and exit 1.
+4. **Write NOTHING to disk:** neither frontmatter edits, nor move operations, nor the transcript.
+5. **Exit 0** if the plan would succeed end-to-end, **exit 1** if any check failed, **exit 2** on unexpected error.
 
-Print the plan to stdout as a numbered list (e.g., "1. Validate preconditions passed", "2. Edit thread.md: status active → archived, remove maturity, add archived_at/archived_by/discard_reason", "3. Execute: git mv thoughts/threads/<slug> thoughts/archive/<slug>", "4. Run verify-tree --rebuild-index --dry-run", "5. Commit: chore(<slug>): discard thread — <reason>"). When exiting 1, also print the failing precondition or rebuild error.
+Print the plan to stdout as a numbered list. When exiting 1, also print the failing precondition or rebuild error.
 
 ## Side effects
 
@@ -98,28 +94,19 @@ Print the plan to stdout as a numbered list (e.g., "1. Validate preconditions pa
 | Path (relative to brain root)              | Operation       | Notes                                                                        |
 |--------------------------------------------|-----------------|-------------------------------------------------------------------------------|
 | `threads/[slug]/thread.md`                 | edit + move     | Frontmatter flip; then moved with the directory                              |
-| `threads/[slug]/*`                         | move            | All sibling files in the thread directory move to `archive/[slug]/`          |
-| `archive/[slug]/*`                         | create (as target of move) | Result of `git mv`; no new content generated                     |
-| `thread-index.md`                          | edit            | Row moves from `## Active` or `## Parked` to `## Archived`                   |
-| `current-state.md`                         | edit            | Bullet removed; "Recent merges" entry appended                                |
+| `threads/[slug]/*`                         | move            | All sibling files move to `archive/[slug]/`                                 |
+| `archive/[slug]/*`                         | create          | Result of directory move; no new content generated                           |
+| `archive/[slug]/transcript.md`             | append          | If `transcript_logging=on` (default)                                         |
+| `thread-index.md`                          | regenerate      | By `verify-tree --rebuild-index` from per-thread frontmatter                 |
+| `current-state.md`                         | regenerate      | By `verify-tree --rebuild-index` from per-thread frontmatter                 |
 
-Only `thread.md`'s frontmatter changes; every other file in the thread directory moves as-is. No content is deleted — the discard is recoverable via `git mv archive/[slug] threads/[slug]` plus a manual frontmatter reset.
+Only `thread.md`'s frontmatter changes; every other file moves as-is. No content is deleted — the discard is recoverable.
 
 ### Git operations
 
-| Operation                                            | Trigger | Notes                                                           |
-|------------------------------------------------------|---------|------------------------------------------------------------------|
-| `git mv thoughts/threads/[slug] thoughts/archive/[slug]` | step 5  | Preserves file history across the move                        |
-| `git add && git commit`                           | step 9  | Single commit with index files and the move                  |
+**None.** This skill performs file operations only (directory move and file edits). The user runs `git add` and `git commit` themselves (§ Git deferred).
 
 When `--dry-run` is set: NO side effects. Stdout output only.
-| `git add thoughts/ && git commit -m …`               | step 8  | Single commit; contains frontmatter + move + index updates      |
-
-No branch creation, no push.
-
-### External calls
-
-- **`gh pr view <url> --json state`** — invoked **only** if precondition 4 fails (non-empty `tree_prs`), to name the correct sibling skill. If `gh` is unavailable, the failure is reported without the cross-reference; the user still sees that `tree_prs` is non-empty.
 
 ## Outputs
 
@@ -133,10 +120,18 @@ No branch creation, no push.
 **State passed forward.**
 
 - `thread_slug` — unchanged.
-- `discard_commit` — SHA of the single commit.
 - `archived_path` — new path under `archive/`.
 - `discard_reason` — unchanged from input.
 - `source_status` — the status the thread held before discard (`active` or `parked`).
+
+### Verbosity contract
+
+Reads `verbosity` from `<brain>/config.yaml` (env override: `PROJECT_BRAIN_VERBOSITY`). Defaults to `terse`.
+
+- **terse** (default): one acknowledgement line naming the action + thread, then `Done.`
+  - Example output: `Discarding project-brain/threads/alpha/ to archive (reason: subsumed). Done.`
+- **normal**: structured summary of file operations (frontmatter changes, directory move).
+- **verbose**: full narration (pre-rc4 default). Use for debugging.
 
 ## Frontmatter flips
 
@@ -171,7 +166,7 @@ When `--dry-run` is set: no files are written; the frontmatter changes, git mv o
 
 | Failure                                      | Cause                                                                             | Response                                                                 |
 |----------------------------------------------|-----------------------------------------------------------------------------------|--------------------------------------------------------------------------|
-| Brain root not found                         | No `thoughts/CONVENTIONS.md` up the tree                                          | refuse — prompt user to `init-project-brain`                             |
+| Brain root not found                         | No `project-brain/CONVENTIONS.md` up the tree                                          | refuse — prompt user to `init-project-brain`                             |
 | Thread slug does not resolve                 | Typo; wrong cwd                                                                   | refuse — list nearby slugs                                               |
 | Thread in `in-review`                        | PR is live                                                                        | refuse — direct user to close the PR, then to `discard-promotion` or `finalize-promotion` |
 | Thread in `archived`                         | Already discarded or archived                                                     | refuse — report current `archived_at` for visibility                     |

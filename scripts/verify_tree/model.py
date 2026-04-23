@@ -38,6 +38,7 @@ RESERVED_FILENAMES = {
     "feedback-out.md",
     "current-state.md",
     "thread-index.md",
+    "transcript.md",
     "AUDIT-LOG.md",
     "CODEOWNERS",
     "CONTRIBUTING.md",
@@ -46,9 +47,11 @@ RESERVED_FILENAMES = {
     "INSTALL.md",
     "RUNTIME.md",
     "index.md",
+    "config.yaml",
 }
 RESERVED_DIRS = {
-    "thoughts",
+    "project-brain",
+    "thoughts",            # retained for rc3 → rc4 back-compat (half-migrated brains)
     "threads",
     "archive",
     "tree",
@@ -56,6 +59,7 @@ RESERVED_DIRS = {
     "debate",
     "tryouts",
     "diagrams",
+    "attachments",
 }
 
 # Valid states per CONVENTIONS § 4
@@ -157,10 +161,19 @@ REQUIRED_BY_KIND = {
 #   - debate-round-raw: feedback-in, defender, transcript, tryouts/* — evidence
 #   - debate-feedback: feedback-in.md / feedback-out.md at thread level
 #   - thread-helper:   decisions-candidates.md, open-questions.md — scratchpads
+#   - transcript:      per-thread transcript.md — append-only human-LLM log (v1.0.0-rc4)
+#   - attachment:      anything inside <thread>/attachments/ — arbitrary evidence (v1.0.0-rc4)
 #   - unknown:         anything we can't classify shouldn't fire parse errors
 # check_parse skips these entirely so a missing '---' delimiter is not V-06.
 KINDS_WITHOUT_FRONTMATTER = frozenset(
-    {"unknown", "debate-feedback", "thread-helper", "debate-round-raw"}
+    {
+        "unknown",
+        "debate-feedback",
+        "thread-helper",
+        "debate-round-raw",
+        "transcript",
+        "attachment",
+    }
 )
 
 

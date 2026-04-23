@@ -11,13 +11,12 @@ V-20: source_debate resolves to a round-NN directory.
 
 from __future__ import annotations
 
-import os
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Iterable, Optional
+from typing import Any, Iterable
 
 try:
-    import yaml  # type: ignore
+    import yaml  # type: ignore  # noqa: F401 — retained for callers
 except ImportError:  # pragma: no cover
     import sys
 
@@ -26,40 +25,13 @@ except ImportError:  # pragma: no cover
     )
     sys.exit(2)
 
+from .config import (
+    any_layer_available,
+    global_registry_path,
+    per_project_config_path,
+    resolve_alias,
+)
 from .model import ROUND_DIR_RE, Artifact
-
-
-def _projects_registry_path() -> Path:
-    """Locate the project alias registry.
-
-    Per CONVENTIONS § 2 the user-global registry lives at
-    ``~/.ai/projects.yaml``. An env override
-    (``PROJECT_BRAIN_PROJECTS_YAML``) is honoured so tests and CI can
-    point at a fixture without mutating the user's home dir.
-    """
-    override = os.environ.get("PROJECT_BRAIN_PROJECTS_YAML")
-    if override:
-        return Path(override).expanduser()
-    return Path("~/.ai/projects.yaml").expanduser()
-
-
-def _load_projects_registry() -> Optional[dict]:
-    """Parse ~/.ai/projects.yaml. Return None if missing or malformed.
-
-    The top-level keys ARE the alias names (see CONVENTIONS § 2 — no
-    wrapping ``aliases:`` mapping). Each entry is a dict with at least a
-    ``brain`` key pointing at the target brain directory.
-    """
-    path = _projects_registry_path()
-    if not path.is_file():
-        return None
-    try:
-        data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
-    except (yaml.YAMLError, OSError):
-        return {}  # sentinel: present but unusable
-    if not isinstance(data, dict):
-        return {}
-    return data
 
 
 def _iter_soft_link_uris(links: Any) -> Iterable[str]:
@@ -85,55 +57,40 @@ class RefsInvariantsMixin:
                 continue  # syntactic only — no fetch
             if ":" in uri and not uri.startswith("/"):
                 alias, _, sub = uri.partition(":")
-                registry = _load_projects_registry()
-                if registry is None:
-                    # Registry absent. Can't validate cross-project refs —
-                    # emit a warning so the author knows the link is
-                    # unverified instead of silently greenlighting it.
+                # V-03 two-layer alias resolution (v1.0.0-rc4):
+                #   1. per-project <brain>/config.yaml `aliases:` block
+                #   2. user-global registry (opt-in, may be absent)
+                #
+                # No layer present → warning (brain is usable without ~/
+                # access; we just can't verify cross-project refs).
+                # Some layer present but alias not found → error.
+                if not any_layer_available(self.brain):
                     self.add(
                         "V-03",
                         a,
-                        f"soft_link alias {alias!r} cannot be validated: "
-                        f"{_projects_registry_path()} not found.",
+                        f"soft_link alias {alias!r} cannot be validated: no "
+                        f"config.yaml next to the brain and no global "
+                        f"registry at {global_registry_path()}.",
                         severity="warning",
                     )
                     continue
-                if registry == {}:
-                    self.add(
-                        "V-03",
-                        a,
-                        f"{_projects_registry_path()} malformed; cannot resolve alias {alias!r}.",
-                    )
-                    continue
-                entry = registry.get(alias)
+                entry = resolve_alias(self.brain, alias)
                 if entry is None:
                     self.add(
                         "V-03",
                         a,
                         f"soft_link alias {alias!r} not found in "
-                        f"{_projects_registry_path()}.",
+                        f"{per_project_config_path(self.brain)} or "
+                        f"{global_registry_path()}.",
                     )
                     continue
-                # Per CONVENTIONS § 2 the entry is a dict with a `brain` key.
-                # Back-compat: also accept a bare string (legacy flat map).
-                if isinstance(entry, dict):
-                    target_root_raw = entry.get("brain") or entry.get("root")
-                    if not isinstance(target_root_raw, str):
-                        self.add(
-                            "V-03",
-                            a,
-                            f"alias {alias!r} in registry is missing a "
-                            f"`brain:` or `root:` path.",
-                        )
-                        continue
-                elif isinstance(entry, str):
-                    target_root_raw = entry
-                else:
+                target_root_raw = entry.get("brain") or entry.get("root")
+                if not isinstance(target_root_raw, str):
                     self.add(
                         "V-03",
                         a,
-                        f"alias {alias!r} has unexpected registry entry type "
-                        f"{type(entry).__name__}.",
+                        f"alias {alias!r} entry is missing a "
+                        f"`brain:` or `root:` path.",
                     )
                     continue
                 target_root = Path(target_root_raw).expanduser()

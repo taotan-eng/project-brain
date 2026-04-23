@@ -1,11 +1,11 @@
 ---
 name: multi-agent-debate
 description: Run a structured multi-agent review round against either a leaf (hardening) or a thread (refinement). Creates debate/round-NN/ under the artifact per § 7, writes feedback-in.md, spawns per-persona reviewer subagents in parallel (count controlled by --reviewers=N; personas from § 10.2 or ad-hoc via --persona=name:charter), runs a defender that issues CONCEDE / CONCEDE-IN-PART / DEFER / REJECT verdicts, optionally runs a synthesizer, and emits proposed-patches.md plus open-issues.md. Supports --review-mode=full (default) or --review-mode=delta (review only changes since the prior round). On leaf scope, flips status decided|specified ↔ hardening. On thread scope, updates last_debate_round but leaves status/maturity unchanged, enabling multiple review rounds during thread refinement. Use when the user says "run multi-agent review", "review this thread", "harden this leaf", "open a debate round", "close the debate", "round-NN results", or "finish the review cycle".
-version: 0.3.2
+version: 1.0.0-rc4
 pack: project-brain
 requires:
   - git
-  - "read:~/.ai/projects.yaml"
+  - "read:~/.config/project-brain/projects.yaml"
   - "write:[brain-root]"
   - "spawn:subagents"
 ---
@@ -45,7 +45,7 @@ The skill is two modes. **Open** is the round-opener described above. **Close** 
 | `feedback`            | user prompt                     | cond.    | 1–5 sentence brief for `open` mode: "what should this round address?" Written verbatim into `feedback-in.md` and handed to every reviewer. |
 | `use_synthesizer`     | user prompt                     | no       | Boolean for `open` mode. Default: true if total reviewers ≥ 4 or user expects high concede rate; false otherwise. Can be overridden via `--synthesizer` / `--no-synthesizer`. |
 | `patches_status`      | user prompt                     | cond.    | For `close` mode only: confirmation that patches from `proposed-patches.md` have been applied (`applied` / `partial` / `rejected`). Determines the close note and whether `open-issues.md` carries forward. |
-| `--brain=<path>`      | user prompt or cwd inference    | no       | Absolute path to the brain root. Defaults to the nearest ancestor `thoughts/` directory.        |
+| `--brain=<path>`      | user prompt or cwd inference    | no       | Absolute path to the brain root. Defaults to the nearest ancestor `project-brain/` directory.        |
 
 Prompt strategy: resolve `artifact_path` from cwd. Infer `scope` from the path prefix. Infer `mode` from artifact status and round state. For `open`, ask `personas` via `AskUserQuestion` multi-select on § 10.2 if not supplied; if no § 10.2 personas are configured, require at least one ad-hoc persona. Ask `feedback` via a follow-up. For `close`, ask `patches_status` with three options: "Applied in a separate commit" / "Partially applied — some rejected" / "Rejected — don't land any".
 
@@ -57,7 +57,7 @@ The skill **refuses** if any of these are not met.
 
 1. **Path-traversal safeguard on `--artifact-path`.** The `artifact_path` input (whether from `--artifact-path` flag or inferred from cwd) must be validated before use. Canonicalize the path using the platform's realpath-equivalent semantics (resolving `..` segments and symlinks). Read `brain_path` from the project registry per § 2 and canonicalize it identically. Verify that the canonical `artifact_path` begins with the canonical `brain_path` followed by a path separator (or is equal to `brain_path` if the artifact is at the root). Refuse with the error message `artifact_path escapes brain_path: <canonical_artifact_path>` if this check fails. This applies to both `--open` and `--close` modes. This safeguard prevents directory-traversal attacks via symlinks or `..` sequences in the input path.
 
-2. Current working directory is inside a brain root (§ 1). Resolved via `thoughts/CONVENTIONS.md`.
+2. Current working directory is inside a brain root (§ 1). Resolved via `project-brain/CONVENTIONS.md`.
 3. For persona resolution: `personas` and `ad_hoc_personas` combined yield at least one reviewer. If the project has no § 10.2 roster, the user must supply at least one `--persona=...`. Charters at `assets/persona-charters/<name>.md` (read-only inputs); their absence is a warning, not a refuse.
 4. `artifact_path` resolves to either (a) a leaf file at its declared `domain`, or (b) a thread file (`threads/<slug>/thread.md`) or thread directory.
 5. For `open` mode:
@@ -253,7 +253,16 @@ No branch creation. Thread-scope rounds run on main (threads live on main by con
 
 **State passed forward.**
 
-- `artifact_path`, `scope`, `round_number`, `debate_commit` (SHA of the single commit), `verdict_summary` (open), `patches_status` (close), `carry_forward_seed` (boolean, close).
+- `artifact_path`, `scope`, `round_number`, `debate_commit` (SHA), `verdict_summary` (open), `patches_status` (close), `carry_forward_seed` (boolean, close).
+
+### Verbosity contract
+
+Reads `verbosity` from `<brain>/config.yaml` (env override: `PROJECT_BRAIN_VERBOSITY`). Defaults to `terse`.
+
+- **terse** (default): one line per artifact (leaf or thread) + round + verdicts, then `Done.`
+  - Example: `Opened debate round-03 on project-brain/tree/engineering/api-spec.md (5 reviewers, 4 CONCEDE, 1 DEFER). Done.`
+- **normal**: structured summary of personas, verdicts, carried patches.
+- **verbose**: full narration (pre-rc4 default). Use for debugging.
 
 ## Frontmatter flips
 
@@ -279,7 +288,7 @@ Thread scope performs no flips on close — `last_debate_round` persists as the 
 
 | Failure                                              | Cause                                                                      | Response                                                               |
 |-------------------------------------------------------|----------------------------------------------------------------------------|-------------------------------------------------------------------------|
-| Brain root not found                                 | No `thoughts/CONVENTIONS.md` up the tree                                   | refuse                                                                  |
+| Brain root not found                                 | No `project-brain/CONVENTIONS.md` up the tree                                   | refuse                                                                  |
 | No personas available                                | Project has no § 10.2 roster AND no `--persona=...` supplied               | refuse — suggest editing § 10.2 or passing an ad-hoc persona           |
 | Persona charters missing                             | `assets/persona-charters/<name>.md` not present for a § 10.2 persona       | warn — continue with generic reviewer prompt; log missing files         |
 | Leaf not `decided` / `specified` (open, leaf scope)  | Leaf in wrong lifecycle state                                              | refuse — report current status                                         |

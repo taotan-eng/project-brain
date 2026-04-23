@@ -41,7 +41,7 @@ Persona charters in `assets/persona-charters/` and soft_links content are free-f
 
 Skills that accept `--artifact-path`, `--out`, or `--persist` flags (notably `debate`, `materialize-context`, and `promote`) must refuse paths outside the brain root.
 
-**Validation:** `verify-tree` V-21 checks that all path references are within `thoughts/` and reports violations. Skills should fail fast if a user attempts `--artifact-path=../../sensitive-file.md`.
+**Validation:** `verify-tree` V-21 checks that all path references are within `project-brain/` and reports violations. Skills should fail fast if a user attempts `--artifact-path=../../sensitive-file.md`.
 
 ### Secret exfiltration via promotion
 
@@ -72,13 +72,13 @@ Be explicit about boundaries:
 
 - **Malicious SKILL.md content:** The pack assumes skills themselves are trusted. A compromised or hostile skill in the pack can do anything. Review PRs that modify or add skills.
 - **Compromised git remote:** If the git remote is rewritten after a promote PR is opened, the pack cannot detect replay or history rewriting.
-- **Attacker with commit access to thoughts/:** An actor with write access to the brain repo can modify threads, leaves, and promote decisions without the skill-chain constraints.
+- **Attacker with commit access to project-brain/:** An actor with write access to the brain repo can modify threads, leaves, and promote decisions without the skill-chain constraints.
 - **LLM jailbreaks:** Personas are free-form text. A sufficiently adversarial persona might cause an LLM to ignore envelope framing and behave unexpectedly. This is a general LLM safety problem, not specific to the pack.
 
 ## Defense-in-depth expected of users
 
 - **PR review:** The pack is designed for review. Review skill changes, persona charters, and thread promotions in PRs before merging.
-- **Gitignore sensitive audit artifacts:** If you don't want materialized context or audit logs in git, add `.context/` and `thoughts/.audit-log.jsonl` to `.gitignore`.
+- **Gitignore sensitive audit artifacts:** If you don't want materialized context or audit logs in git, add `.context/` and `project-brain/.audit-log.jsonl` to `.gitignore`.
 - **Branch protection and CODEOWNERS:** Wire CODEOWNERS + branch protection to enforce review policy. The pack's `review_requirement` frontmatter field is unenforced by design — it is advisory. Actual enforcement lives in git settings.
 - **Audit snapshot review:** When `materialize-context --persist` is used, review the audit snapshot in the PR before merge. It may contain secrets, logs, or third-party data.
 

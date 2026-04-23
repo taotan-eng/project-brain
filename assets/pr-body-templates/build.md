@@ -2,7 +2,7 @@
 
 - **Decision:** [`{{LEAF_PATH}}`]({{LEAF_URL}})
 - **Impl-spec:** [`{{IMPL_SPEC_PATH}}`]({{IMPL_SPEC_URL}})
-- **Build thread:** [`{{BUILD_THREAD_SLUG}}`](../thoughts/threads/{{BUILD_THREAD_SLUG}}/thread.md)
+- **Build thread:** [`{{BUILD_THREAD_SLUG}}`](../project-brain/threads/{{BUILD_THREAD_SLUG}}/thread.md)
 
 ## Stages completed
 

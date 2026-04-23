@@ -1,11 +1,11 @@
 ---
 name: assign-thread
 description: Manage the assigned_to list on a thread. Supports --add (append handles), --remove (delete handles), --set (replace list), and --clear (remove field entirely). Appends an audit-trail line to the thread body recording who made the change, when, and why. Rebuilds thread-index.md and current-state.md. Use when the user says "assign this thread to <handles>", "add <name> to assigned_to", "unassign from <name>", "clear all assignments", or when managing thread ownership.
-version: 0.1.3
+version: 1.0.0-rc4
 pack: project-brain
 requires:
   - git
-  - "read:~/.ai/projects.yaml"
+  - "read:~/.config/project-brain/projects.yaml"
   - "write:[brain-root]"
 ---
 
@@ -34,7 +34,7 @@ Every assignment change is recorded in an audit trail appended to the thread bod
 | `note`            | user prompt                     | no       | Optional free-form note explaining the assignment change (e.g., "handoff to Alice per 1:1").    |
 | `actor`           | flag or git config              | no       | Override for "who performed this action" in the audit line. Defaults to `git config user.email`, then `git config user.name`. |
 | `push`            | flag (`--push`)                 | no       | Push to the default remote after commit. Default off.                                           |
-| `--brain=<path>`  | user prompt or cwd inference    | no       | Absolute path to the brain root. Defaults to the nearest ancestor `thoughts/` directory.        |
+| `--brain=<path>`  | user prompt or cwd inference    | no       | Absolute path to the brain root. Defaults to the nearest ancestor `project-brain/` directory.        |
 
 Prompt strategy: resolve `thread_slug` from cwd. Ask which operation via `AskUserQuestion` if not supplied as a flag. For each operation, prompt for the handles (none for `--clear`). Optionally prompt for a note. Infer the actor from git config.
 
@@ -44,15 +44,15 @@ Prompt strategy: resolve `thread_slug` from cwd. Ask which operation via `AskUse
 
 The skill **refuses** if any of these are not met.
 
-1. Current working directory is inside a brain root (a `thoughts/` directory containing `CONVENTIONS.md`) or an explicit `--brain=<path>` was given.
-2. `thoughts/threads/[thread_slug]/thread.md` exists.
+1. Current working directory is inside a brain root (a `project-brain/` directory containing `CONVENTIONS.md`) or an explicit `--brain=<path>` was given.
+2. `project-brain/threads/[thread_slug]/thread.md` exists.
 3. Thread `status` is `active`, `parked`, or `in-review`. Archived threads are terminal; refuse with guidance to use `update-thread` on the archive if a fix is needed.
 4. Exactly one of `--add`, `--remove`, `--set`, `--clear` is supplied. Refuse if zero or more than one.
 5. For `--add` and `--set`: `handles` is a non-empty comma-separated list.
 6. For `--remove`: `handles` is a non-empty comma-separated list.
 7. For `--clear`: no `handles` parameter is given.
-8. Working tree has no uncommitted changes to `thoughts/threads/[thread_slug]/thread.md` (don't mix an uncommitted edit into the assign commit). `git status --porcelain thoughts/threads/[thread_slug]/` must be empty.
-9. Standard path-traversal guard: `thread_slug` contains only `[a-z0-9-]`, matches the slug in `thoughts/threads/`, and the resolved path is canonical (no `..` escapes).
+8. Working tree has no uncommitted changes to `project-brain/threads/[thread_slug]/thread.md` (don't mix an uncommitted edit into the assign commit). `git status --porcelain project-brain/threads/[thread_slug]/` must be empty.
+9. Standard path-traversal guard: `thread_slug` contains only `[a-z0-9-]`, matches the slug in `project-brain/threads/`, and the resolved path is canonical (no `..` escapes).
 10. `git config user.email` returns a value (used to populate the actor in the audit line if `--actor` not supplied).
 
 ## Process
@@ -61,13 +61,13 @@ Each step is atomic. Failure at step N leaves the tree in whatever state it was 
 
 1. **Resolve inputs.** Infer `thread_slug` from cwd. If `operation` is not a flag, ask via `AskUserQuestion` which of the four modes to run. Prompt for operation-specific inputs (`handles`, `note`). Infer `actor` from `git config user.email` or `git config user.name` as fallback (or use `--actor` override).
 2. **Validate preconditions.** Run checks 1–10 above. On any failure, stop and report the specific precondition.
-3. **Load thread frontmatter.** Read `thoughts/threads/[thread_slug]/thread.md` and parse the YAML frontmatter. Detect the current `assigned_to` value (if absent, treat as an empty list).
+3. **Load thread frontmatter.** Read `project-brain/threads/[thread_slug]/thread.md` and parse the YAML frontmatter. Detect the current `assigned_to` value (if absent, treat as an empty list).
 4. **Compute new `assigned_to` value per operation.**
    - **`--add`**: append each handle in `handles` to the current list. Skip handles already present (idempotent); note skipped handles in the operation report. If the list was absent, create it with the new handles.
    - **`--remove`**: remove each handle in `handles` from the current list. Skip handles not present (idempotent); note skipped handles. If removal leaves the list empty, keep an empty list (not absent) — explicit "unassigned" is a valid state.
    - **`--set`**: replace the entire list with `handles`. If `handles` is empty, set the list to empty (not absent).
    - **`--clear`**: delete the `assigned_to` field entirely (set to absent, not empty). Use when a thread genuinely has no owner/policy.
-5. **Update frontmatter.** Modify `thoughts/threads/[thread_slug]/thread.md` frontmatter to the new `assigned_to` value (or remove the field for `--clear`). Leave all other frontmatter unchanged.
+5. **Update frontmatter.** Modify `project-brain/threads/[thread_slug]/thread.md` frontmatter to the new `assigned_to` value (or remove the field for `--clear`). Leave all other frontmatter unchanged.
 6. **Append audit line.** Create or find the `## Assignment history` section at the bottom of the thread markdown body. If the section does not exist, create it. Append a new line in this format:
 
 ```
@@ -81,7 +81,7 @@ Example:
 
 The operation string is one of: `add`, `remove`, `set`, or `clear`. The `{{handles-involved}}` is the comma-separated list of handles touched (for `clear`, this is `(field removed)`). The note is included iff supplied, prefixed by `—`.
 
-7. **Stage thread file.** Run `git add thoughts/threads/[thread_slug]/thread.md`.
+7. **Stage thread file.** Run `git add project-brain/threads/[thread_slug]/thread.md`.
 8. **Final step — rebuild indexes.** Invoke `verify-tree --rebuild-index`. Handle exit codes per the Stage 2 contract (see § Rebuild contract):
    - Exit 0: proceed to commit.
    - Exit 1 (source validation failure): abort with repair hint.
@@ -89,7 +89,7 @@ The operation string is one of: `add`, `remove`, `set`, or `clear`. The `{{handl
 9. **Commit.** Stage both index files and the thread directory in one commit:
 
 ```
-git add thoughts/threads/[slug]/ thoughts/thread-index.md thoughts/current-state.md
+git add project-brain/threads/[slug]/ project-brain/thread-index.md project-brain/current-state.md
 git commit -m "assign-thread: [slug] [operation] [handles]"
 ```
 
@@ -127,7 +127,7 @@ Print the plan to stdout including a clear "before" and "after" view of the `ass
 
 | Operation                              | Trigger | Notes                                                            |
 |----------------------------------------|---------|-------------------------------------------------------------------|
-| `git add thoughts/ && git commit -m …` | step 9  | Single commit per invocation                                      |
+| `git add project-brain/ && git commit -m …` | step 9  | Single commit per invocation                                      |
 | `git push` (if `--push`)               | step 10 | Optional; not run by default                                      |
 
 ### External calls
@@ -148,9 +148,17 @@ Print the plan to stdout including a clear "before" and "after" view of the `ass
 **State passed forward.**
 
 - `thread_slug` — unchanged from input.
-- `assign_commit` — SHA of the single commit.
 - `operation` — the operation that ran (`add`, `remove`, `set`, or `clear`).
 - `new_assigned_to` — the resulting list (empty list if cleared or empty after removal, absent if `--clear`).
+
+### Verbosity contract
+
+Reads `verbosity` from `<brain>/config.yaml` (env override: `PROJECT_BRAIN_VERBOSITY`). Defaults to `terse`.
+
+- **terse** (default): one line: operation + handles changed, then `Done.`
+  - Example: `Added alice to project-brain/threads/alpha/. Done.`
+- **normal**: old and new assigned lists side-by-side.
+- **verbose**: full audit-trail line + rebuild output.
 
 ## Frontmatter flips
 
@@ -174,7 +182,7 @@ No other fields are touched. `status`, `maturity`, `parked_*`, `archived_*` are 
 
 | Failure                                        | Cause                                                                         | Response                                                               |
 |------------------------------------------------|-------------------------------------------------------------------------------|-------------------------------------------------------------------------|
-| Brain root not found                           | No `thoughts/CONVENTIONS.md` up the tree; no `--brain` given                  | refuse — prompt user to `init-project-brain`                           |
+| Brain root not found                           | No `project-brain/CONVENTIONS.md` up the tree; no `--brain` given                  | refuse — prompt user to `init-project-brain`                           |
 | Thread slug does not resolve                   | Typo; wrong cwd                                                               | refuse — list nearby slugs (levenshtein) and re-prompt                 |
 | Thread in `archived`                           | Terminal state                                                                | refuse — suggest archiving was final or manual fix needed              |
 | Multiple mutation flags supplied               | `--add` + `--remove` or similar                                               | refuse — clarify that exactly one operation per invocation             |

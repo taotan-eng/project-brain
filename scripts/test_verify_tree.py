@@ -287,7 +287,7 @@ class InvariantTests(BaseTest):
         p = make_thread(brain, "alpha")
         text = p.read_text().replace("# A Thread", "# Different Heading")
         p.write_text(text)
-        code, data, *_ = self._run(brain)
+        code, data, *_ = run_validator(brain)
         self.assertIn("V-01", [v["code"] for v in data["errors"]])
         self.assertEqual(code, 1)
 
@@ -326,7 +326,7 @@ class InvariantTests(BaseTest):
             "alpha",
             extras='soft_links:\n  - uri: "https://example.com"\n    rel: x\n',
         )
-        code, data, *_ = self._run(brain)
+        code, data, *_ = run_validator(brain)
         self.assertNotIn("V-03", [v["code"] for v in data["errors"]])
         self.assertEqual(code, 0)
 
@@ -635,7 +635,7 @@ class InvariantTests(BaseTest):
         brain = make_brain(self.tmp_path)
         p = make_thread(brain, "alpha")
         p.write_text(p.read_text().replace("id: alpha", "id: Bad_ID"))
-        code, data, *_ = self._run(brain)
+        code, data, *_ = run_validator(brain)
         self.assertIn("N-01", [v["code"] for v in data["warnings"]])
         self.assertEqual(code, 0)
 
@@ -826,6 +826,97 @@ class InvocationTests(BaseTest):
         code, data, *_ = run_validator(brain)
         codes = [v["code"] for v in data["errors"]]
         self.assertIn("X-TEST-01", codes)
+        self.assertEqual(code, 1)
+
+
+# ---------------------------------------------------------------------------
+# v1.0.0-rc4 additions — transcript, attachments, two-layer config resolver
+# ---------------------------------------------------------------------------
+
+
+class V2AdditionsTests(BaseTest):
+    """transcript.md + <thread>/attachments/* must not fire V-06 even with
+    no frontmatter. Two-layer config resolver must prefer per-project
+    aliases, fall back to global, warn when neither layer exists."""
+
+    def test_transcript_md_without_frontmatter_is_clean(self):
+        brain = make_brain(self.tmp_path)
+        make_thread(brain, "alpha")
+        tx = brain / "threads" / "alpha" / "transcript.md"
+        tx.write_text("# transcript\n\nuser: hello\n\nassistant: hi\n")
+        code, data, *_ = run_validator(brain)
+        self.assertEqual(code, 0, data.get("errors"))
+        self.assertEqual(data["summary"]["errors"], 0)
+
+    def test_attachments_dir_ignored_from_frontmatter_rules(self):
+        brain = make_brain(self.tmp_path)
+        make_thread(brain, "alpha")
+        att = brain / "threads" / "alpha" / "attachments" / "scratch.md"
+        att.parent.mkdir(parents=True, exist_ok=True)
+        att.write_text("# scratch\n\nrandom notes, no frontmatter\n")
+        code, data, *_ = run_validator(brain)
+        self.assertEqual(code, 0, data.get("errors"))
+
+    def test_v03_alias_warning_when_no_config_layer(self):
+        brain = make_brain(self.tmp_path)
+        # Thread with a cross-project alias link but NO config.yaml and NO
+        # global registry → V-03 should fire as a WARNING, not an error.
+        make_thread(
+            brain,
+            "alpha",
+            extras='soft_links:\n  - uri: "otherproj:tree/x.md"\n    rel: x\n',
+        )
+        env = os.environ.copy()
+        env["PROJECT_BRAIN_PROJECTS_YAML"] = "/tmp/does-not-exist-v2.yaml"
+        env.pop("PROJECT_BRAIN_CONFIG", None)
+        # Run via subprocess so the env var actually applies.
+        result = subprocess.run(
+            [sys.executable, str(SCRIPT), "--brain", str(brain), "--format", "json"],
+            capture_output=True, text=True, env=env,
+        )
+        data = json.loads(result.stdout)
+        codes_err = [v["code"] for v in data["errors"]]
+        codes_warn = [v["code"] for v in data["warnings"]]
+        self.assertNotIn("V-03", codes_err)
+        self.assertIn("V-03", codes_warn)
+        self.assertEqual(result.returncode, 0)
+
+    def test_v03_alias_resolves_via_per_project_config(self):
+        brain = make_brain(self.tmp_path)
+        # Create a sibling "other brain" with a matching artifact.
+        other_brain = self.tmp_path / "other-brain"
+        other_brain.mkdir()
+        (other_brain / "target.md").write_text("# target\n")
+        # Per-project config.yaml lists the alias.
+        cfg = brain / "config.yaml"
+        cfg.write_text(
+            "primary_project: demo\n"
+            "aliases:\n"
+            f"  otherproj:\n"
+            f"    brain: {other_brain}\n"
+        )
+        make_thread(
+            brain,
+            "alpha",
+            extras='soft_links:\n  - uri: "otherproj:target.md"\n    rel: x\n',
+        )
+        code, data, *_ = run_validator(brain)
+        codes = [v["code"] for v in data["errors"] + data["warnings"]]
+        self.assertNotIn("V-03", codes, data)
+        self.assertEqual(code, 0)
+
+    def test_v03_alias_error_when_layer_present_but_alias_missing(self):
+        brain = make_brain(self.tmp_path)
+        # config.yaml exists but doesn't list "otherproj".
+        (brain / "config.yaml").write_text("primary_project: demo\naliases: {}\n")
+        make_thread(
+            brain,
+            "alpha",
+            extras='soft_links:\n  - uri: "otherproj:tree/x.md"\n    rel: x\n',
+        )
+        code, data, *_ = run_validator(brain)
+        codes_err = [v["code"] for v in data["errors"]]
+        self.assertIn("V-03", codes_err)
         self.assertEqual(code, 1)
 
 

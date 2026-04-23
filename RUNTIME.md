@@ -43,7 +43,7 @@ Capabilities are explicitly required and documented. When a capability is absent
 
 **Verified:** Pack maintainers ran all 14 skills end-to-end during v0.9.0-alpha.3 cut.
 
-All capabilities present. Native `skill:` invocation. `AskUserQuestion` supported. `Task` tool spawns subagents. `gh` and bash available in the IDE's shell. Project registry at `~/.ai/projects.yaml` works as documented. No degradations.
+All capabilities present. Native `skill:` invocation. `AskUserQuestion` supported. `Task` tool spawns subagents. `gh` and bash available in the IDE's shell. Project registry at `~/.config/project-brain/projects.yaml` works as documented. No degradations.
 
 Install: Use the "Claude Code specific prompt" from README.md § "Install by pointing an AI agent at the repo" or manual layout at `.claude/skills/project-brain/`.
 
@@ -73,7 +73,7 @@ Install: Same prompt as Claude Code; Cowork's skill discovery is identical.
 - `init-project-brain`: falls back to flag-driven input (`--project-alias=..., --domains=...`) instead of interactive `AskUserQuestion`.
 - `materialize-context`: works for all URI schemes except `mcp://` (no MCP connector); `mcp://` refs log as unresolved.
 
-**Install:** Manual layout at `thoughts/.pack-skills/` or wherever Codex expects user-provided tools. Copy `CONVENTIONS.md` to `thoughts/`. Follow INSTALL.md § 2b step-by-step.
+**Install:** Manual layout at `project-brain/.pack-skills/` or wherever Codex expects user-provided tools. Copy `CONVENTIONS.md` to `project-brain/`. Follow INSTALL.md § 2b step-by-step.
 
 ### Gemini CLI — **expected**, not exhaustively verified
 
@@ -190,8 +190,8 @@ Per-runtime summary:
 
 Threads and leaves are git-tracked. The tree is portable.
 
-1. **Before switching:** Run `git status`. Commit all pending thoughts under `thoughts/threads/` and `thoughts/tree/`. The brain is version-controlled and carries its state in committed frontmatter.
-2. **After switching:** Clone the same repo into the new runtime (or open it if already cloned). Cd into `thoughts/`. Run `verify-tree` to confirm the scaffold is intact (exit code 0).
+1. **Before switching:** Run `git status`. Commit all pending thoughts under `project-brain/threads/` and `project-brain/tree/`. The brain is version-controlled and carries its state in committed frontmatter.
+2. **After switching:** Clone the same repo into the new runtime (or open it if already cloned). Cd into `project-brain/`. Run `verify-tree` to confirm the scaffold is intact (exit code 0).
 3. **If a skill fails in the new runtime:** Check the capability matrix and per-runtime section above. The failure is almost always "runtime lacks capability X" — install `gh` if needed, or follow scaffold-and-refuse instructions for multiagent. No data is lost; the failed skill leaves the repo in a clean state.
 4. **Resume work:** All per-artifact state (thread frontmatter, leaf status, debate rounds) is in the repo. A different runtime is a toolchain change, not a data migration.
 

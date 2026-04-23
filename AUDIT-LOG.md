@@ -16,7 +16,7 @@
 
 ## Location
 
-`thoughts/.audit-log.jsonl` at the brain root. Tracked in git by default; project can `.gitignore` it if they prefer it ephemeral. Never rotated by the pack; projects that want rotation wire it externally.
+`project-brain/.audit-log.jsonl` at the brain root. Tracked in git by default; project can `.gitignore` it if they prefer it ephemeral. Never rotated by the pack; projects that want rotation wire it externally.
 
 ## Format
 
@@ -49,7 +49,7 @@ One JSON object per line (JSONL). Fields:
 
 Each mutating skill, as its final post-commit step:
 
-1. Reads `thoughts/.audit-log.jsonl` (creates empty if absent).
+1. Reads `project-brain/.audit-log.jsonl` (creates empty if absent).
 2. Appends ONE line — the whole JSON object, no pretty-printing, newline-terminated.
 3. `fsync`s the file (best-effort) to survive crashes.
 4. Optionally commits the updated file in the same commit as its other changes. Default: `.audit-log.jsonl` is excluded from the skill's automatic commit and the user decides whether to track it.
@@ -61,9 +61,9 @@ Each mutating skill, as its final post-commit step:
 
 ## Projects that want enforcement
 
-- Pre-commit hook that checks every commit modifying `thoughts/` has a corresponding audit-log append.
+- Pre-commit hook that checks every commit modifying `project-brain/` has a corresponding audit-log append.
 - CI job that verifies audit-log consistency (every `promote-thread-to-tree` entry has a matching merged PR, every `finalize-promotion` entry is after its `promote-thread-to-tree` entry, etc.).
-- External log aggregator: `tail -f thoughts/.audit-log.jsonl | jq` or ship to Loki / Vector / Datadog.
+- External log aggregator: `tail -f project-brain/.audit-log.jsonl | jq` or ship to Loki / Vector / Datadog.
 
 ## What this does NOT solve
 
@@ -80,7 +80,7 @@ Each mutating skill, as its final post-commit step:
 
 **Implementation pattern:**
 
-- Shared helper at `scripts/audit-log.py` that accepts a JSON payload on stdin and appends to `thoughts/.audit-log.jsonl`. Each skill shells out to it.
+- Shared helper at `scripts/audit-log.py` that accepts a JSON payload on stdin and appends to `project-brain/.audit-log.jsonl`. Each skill shells out to it.
 - Schema versioning: `schema_version: 1` is the first field in every record; v2 breaks glass if needed.
 
 ## Open questions (document; do not answer)

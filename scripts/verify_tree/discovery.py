@@ -17,8 +17,8 @@ from .model import Artifact
 def find_brain_root(start: Path) -> Optional[Path]:
     """Return the nearest ancestor containing a CONVENTIONS.md.
 
-    The brain root is the directory that holds CONVENTIONS.md and a thoughts/
-    directory. If the start path is inside a thoughts/ tree, walk up.
+    The brain root is the directory that holds CONVENTIONS.md (a thoughts/
+    directory in v2, or thoughts/ in legacy v1 brains). If the start path is inside it, walk up.
     """
     p = start.resolve()
     for candidate in [p] + list(p.parents):
@@ -52,12 +52,24 @@ def classify(rel_path: str, frontmatter: dict) -> str:
     if name == "current-state.md":
         return "snapshot"
 
+    # Per-thread transcript + attachments (v1.0.0-rc4).
+    # Anything under <thread-dir>/attachments/ is arbitrary evidence with
+    # no frontmatter contract. transcript.md is an append-only human-LLM log.
+    if "attachments" in parts:
+        return "attachment"
+    if name == "transcript.md":
+        return "transcript"
+
     # Per F9: debate/ subtrees have a distinct kind vocabulary.
     # Synthesized outputs (index.md above round-NN/, proposed-patches.md +
     # open-issues.md inside round-NN/) carry minimal frontmatter so the
     # classifier can dispatch; everything else under debate/ is raw evidence
     # (transcript, tryouts, defender, feedback-in) and is exempt from V-06.
-    if "debate" in parts:
+    #
+    # V-09 supports three debate directory layouts — either a literal
+    # ``debate/`` dir, or a ``<stem>.debate/`` sibling of the hardening leaf
+    # (stem-suffixed). The classifier needs to match both forms.
+    if any(p == "debate" or p.endswith(".debate") for p in parts):
         in_round = any(p.startswith("round-") for p in parts)
         if in_round:
             if name in ("proposed-patches.md", "open-issues.md"):

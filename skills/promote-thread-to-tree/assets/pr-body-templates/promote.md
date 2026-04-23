@@ -12,8 +12,8 @@ Promoted from thread `{{SOURCE_THREAD}}` after {{ROUND_COUNT}} debate round(s). 
 
 ## Files changed
 
-- `thoughts/tree/{{DOMAIN}}/{{LEAF_SLUG}}.md` — new leaf (status=`in-review`)
-- `thoughts/threads/{{SOURCE_THREAD}}/thread.md` — adds this leaf to `promoted_to` / `promoted_at`, sets status to `in-review`
+- `project-brain/tree/{{DOMAIN}}/{{LEAF_SLUG}}.md` — new leaf (status=`in-review`)
+- `project-brain/threads/{{SOURCE_THREAD}}/thread.md` — adds this leaf to `promoted_to` / `promoted_at`, sets status to `in-review`
 {{NODE_CHANGES}}
 
 ## After merge

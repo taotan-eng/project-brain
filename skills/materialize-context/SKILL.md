@@ -1,10 +1,10 @@
 ---
 name: materialize-context
 description: Read-only skill that walks the soft_links of a thread, leaf, NODE.md, or impl-spec, resolves each URI per § 5.1 (project aliases, tree-internal paths, file://, http(s)://, mcp://), filters and budgets the resolved content per § 5.2 role semantics, and emits an aggregated context.md ready to hand to a subagent, reviewer, or author. Defaults to ephemeral scratch output; --persist writes inside the artifact dir for audit snapshots. --detect-stale walks refs without materializing to surface broken or drifted links. Use when the user says "materialize context for this thread", "pull in all linked specs", "build a reviewer packet", "check for stale links on <leaf>", or when another skill (multi-agent-debate, promote-thread-to-tree, derive-impl-spec) needs resolved content behind soft_links without re-implementing URI resolution.
-version: 0.2.0
+version: 1.0.0-rc4
 pack: project-brain
 requires:
-  - "read:~/.ai/projects.yaml"
+  - "read:~/.config/project-brain/projects.yaml"
   - "read:[brain-root]"
   - "read:[aliased-repos]"
   - "fetch:https"
@@ -16,7 +16,7 @@ requires:
 
 The pack's `soft_links` field (§ 5) is the single cross-reference surface: a URI-typed list with roles from `spec | prior-decision | related-work | conversation | scratch | external-reference`. Roles exist so agents and humans can budget attention — a reviewer reading a dense leaf needs full text of every `spec` and `prior-decision` but only skims `related-work`. But the URIs themselves are just pointers; the *content* is somewhere else: another repo, a local file, a web page, a Slack thread addressed via MCP. Resolving those pointers every time they're needed is wasteful (same spec fetched across a dozen debate rounds), lossy (link rot), and fragile (one MCP hiccup derails a reviewer subagent).
 
-`materialize-context` is the centralization of that resolution logic. Given an artifact, it reads the `soft_links` frontmatter, resolves each URI by scheme, applies a role-driven budget to trim the content, and writes one aggregated `context.md` with a consistent section-per-ref layout. Callers — whether humans, skills like `multi-agent-debate`, or bare agents — read that single file instead of re-implementing URI resolution each time. The skill does not modify the brain; it is strictly read-only on everything under `thoughts/`.
+`materialize-context` is the centralization of that resolution logic. Given an artifact, it reads the `soft_links` frontmatter, resolves each URI by scheme, applies a role-driven budget to trim the content, and writes one aggregated `context.md` with a consistent section-per-ref layout. Callers — whether humans, skills like `multi-agent-debate`, or bare agents — read that single file instead of re-implementing URI resolution each time. The skill does not modify the brain; it is strictly read-only on everything under `project-brain/`.
 
 ## When to invoke
 
@@ -46,10 +46,10 @@ Prompt strategy: infer `artifact_path` from cwd if a thread or leaf file is open
 
 The skill **refuses** if any of these are not met.
 
-1. Current working directory is inside a brain root (a `thoughts/` directory containing `CONVENTIONS.md`) or an explicit `--brain=<path>` was given.
+1. Current working directory is inside a brain root (a `project-brain/` directory containing `CONVENTIONS.md`) or an explicit `--brain=<path>` was given.
 2. `artifact_path` resolves to a real file whose frontmatter parses as YAML.
 3. The artifact's frontmatter has a `soft_links` key (value may be an empty list — output is trivially empty but the skill does not refuse).
-4. `~/.ai/projects.yaml` exists and contains the artifact's `primary_project` alias, plus any other aliases referenced by `soft_links` entries.
+4. `~/.config/project-brain/projects.yaml` exists and contains the artifact's `primary_project` alias, plus any other aliases referenced by `soft_links` entries.
 5. For each aliased URI (`<alias>:<tree-path>`): the alias's `brain:` or repo root resolves to a readable path on disk. Aliases with unreachable roots are *not* a hard refuse — they are recorded as unresolved and the skill continues.
 6. **Path traversal check (new):** Before any I/O, canonicalize `artifact_path`, `--out` (if supplied), and the default cache/persist target paths using `realpath`-equivalent semantics. Then:
    - For `artifact_path`: verify that the canonical path starts with the canonical `brain_path` (brain root). Refuse with error `artifact_path escapes brain_path: <canonical_path>` if not.
@@ -71,7 +71,7 @@ Each step is idempotent for pure reads. Writes happen only at step 7.
 3. **Load artifact frontmatter.** Read `artifact_path`, parse YAML. Extract `soft_links` (normalize bare-string sugar per § 5.3 into `{uri, role?}` objects). Identify `primary_project` for the registry lookup.
 4. **Classify each ref by URI scheme** (per § 5.1):
     - `<alias>:<tree-path>` → resolve alias's `brain:` root (or a repo root via `remotes[*].url` if the tree-path begins outside the brain), then read the file.
-    - `<alias>:thread/<slug>` → read `thoughts/threads/<slug>/thread.md` in the aliased brain.
+    - `<alias>:thread/<slug>` → read `project-brain/threads/<slug>/thread.md` in the aliased brain.
     - `/<tree-path>` → read relative to the *current* brain root.
     - `file://<absolute-path>` → read local file.
     - `https://...` / `http://...` → fetch via the environment's HTTPS client; honor the scratch cache unless `--refresh`.
@@ -132,7 +132,7 @@ No git operations are ever performed by this skill. Persisted output under `.con
 | `<out-path>/context.md`                                             | create    | `--out`             | Explicit user path                                                      |
 | `$MATERIALIZE_SCRATCH_ROOT/.../stale-refs.md`                       | create    | `detect-stale`      | Only the stale-refs report; no content                                  |
 
-No files under `thoughts/` are ever modified by the `materialize` or `detect-stale` modes (other than `--persist`, which writes to a designated gitignored subdir). The artifact being materialized is never touched — frontmatter, body, and companions are read-only.
+No files under `project-brain/` are ever modified by the `materialize` or `detect-stale` modes (other than `--persist`, which writes to a designated gitignored subdir). The artifact being materialized is never touched — frontmatter, body, and companions are read-only.
 
 ### Security & Privacy
 
@@ -192,16 +192,25 @@ None. This skill is strictly read-only on every artifact in the brain. The only 
 - No git state changed.
 - `verify-tree` is unaffected — the skill does not introduce tracked artifacts.
 
+### Verbosity contract
+
+Reads `verbosity` from `<brain>/config.yaml` (env override: `PROJECT_BRAIN_VERBOSITY`). Defaults to `terse`.
+
+- **terse** (default): one acknowledgement line naming the action + target, then `Done.` No tool-output echo, no "let me..." preamble.
+  - Example output: `Resolved 4 soft_links, wrote context bundle to /tmp/ctx-xyz.md. Done.`
+- **normal**: structured summary of what changed (file paths, artifact counts), no conversational framing.
+- **verbose**: full narration (pre-rc4 default). Use for debugging.
+
 ## Failure modes
 
 | Failure                                      | Cause                                                                              | Response                                                                 |
 |----------------------------------------------|-------------------------------------------------------------------------------------|---------------------------------------------------------------------------|
-| Brain root not found                         | No `thoughts/CONVENTIONS.md` up the tree                                            | refuse                                                                    |
+| Brain root not found                         | No `project-brain/CONVENTIONS.md` up the tree                                            | refuse                                                                    |
 | Artifact path does not resolve               | Typo; wrong cwd                                                                     | refuse — list nearby paths                                               |
 | Frontmatter malformed                        | Invalid YAML                                                                        | refuse — report line/col of parse failure                                |
 | Artifact has no `soft_links` key             | Frontmatter schema mismatch                                                         | refuse — suggest `verify-tree` to diagnose                               |
 | Empty `soft_links` list                      | Valid but trivially empty                                                           | write empty `context.md` + summary `0 refs`; do not refuse               |
-| `primary_project` alias missing from registry| Broken config                                                                       | refuse — name the alias and point at `~/.ai/projects.yaml`               |
+| `primary_project` alias missing from registry| Broken config                                                                       | refuse — name the alias and point at `~/.config/project-brain/projects.yaml`               |
 | Referenced alias missing from registry        | Cross-project ref into unregistered alias                                          | soft-fail — ref goes to Unresolved with reason "unknown alias"           |
 | Aliased repo root unreadable                 | Missing clone, bad permissions                                                      | soft-fail — ref goes to Unresolved with reason "alias root unreachable"  |
 | Tree-internal path does not exist            | Stale ref                                                                           | soft-fail — Unresolved with reason "not-found"                            |

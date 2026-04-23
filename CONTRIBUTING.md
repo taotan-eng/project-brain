@@ -66,8 +66,8 @@ The validator (`verify-tree`) enforces reserved names as errors and slug style a
 
 Before opening a PR:
 
-1. Run `python3 scripts/verify-tree.py` at the pack root if the pack has a `thoughts/` directory (it may not during development).
-2. If you're adding a skill or changing schema, create a minimal test project with the pack installed, add a few test threads to `thoughts/`, then run `verify-tree` on that project.
+1. Run `python3 scripts/verify-tree.py` at the pack root if the pack has a `project-brain/` directory (it may not during development).
+2. If you're adding a skill or changing schema, create a minimal test project with the pack installed, add a few test threads to `project-brain/`, then run `verify-tree` on that project.
 3. The skill's preconditions and postconditions should be testable: does my skill refuse correctly when preconditions aren't met? Does it invoke `verify-tree --rebuild-index` as its final step?
 
 Exit code 0 is success. Non-zero means validation failed; fix violations and try again.

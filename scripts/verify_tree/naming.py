@@ -2,7 +2,7 @@
 
 N-01: artifact `id` slug is [a-z][a-z0-9]*(-[a-z0-9]+)*, 3–40 chars.
 N-02: reserved filenames (NODE.md, thread.md, etc.) must match exact casing.
-N-03: reserved directory names (thoughts, threads, archive, ...) must be lowercase.
+N-03: reserved directory names (project-brain, threads, archive, ...) must be lowercase.
 N-04: debate round directories must be sequential round-01, round-02, ...
 """
 

@@ -78,6 +78,23 @@ def main(argv: Optional[list[str]] = None) -> int:
         )
         return EXIT_INVOCATION
 
+    # Half-migrated-brain detection (v1.0.0-rc4). The rc4 directory rename
+    # moved brains from ``thoughts/`` → ``project-brain/``; a sibling with the
+    # legacy name and its own CONVENTIONS.md means migration is incomplete
+    # and the two dirs will drift. Warn loudly but don't fail — the
+    # authoritative brain we resolved is still usable.
+    sibling_map = {"thoughts": "project-brain", "project-brain": "thoughts"}
+    if brain.name in sibling_map:
+        sib = brain.parent / sibling_map[brain.name]
+        if (sib / "CONVENTIONS.md").is_file():
+            sys.stderr.write(
+                f"warning: half-migrated brain detected — both "
+                f"{brain.name}/ and {sib.name}/ contain CONVENTIONS.md under "
+                f"{brain.parent}. Validating against {brain.name}/ only. "
+                f"Finish the migration with scripts/migrate-brain-dir.sh "
+                f"(or remove the obsolete sibling) before the two drift.\n"
+            )
+
     # Sanity-check CONVENTIONS parses so all downstream code can assume it.
     conv = brain / "CONVENTIONS.md"
     if conv.is_file():

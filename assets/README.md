@@ -37,7 +37,7 @@ Common placeholders across templates:
 | `{{TITLE}}`              | user prompt                             |
 | `{{CREATED_AT}}`         | `date -u +%Y-%m-%dT%H:%M:%SZ`           |
 | `{{OWNER}}`              | `git config user.email` or user prompt  |
-| `{{PRIMARY_PROJECT}}`    | `~/.ai/projects.yaml` alias             |
+| `{{PRIMARY_PROJECT}}`    | `~/.config/project-brain/projects.yaml` alias             |
 | `{{TREE_DOMAIN_OR_NULL}}`| user prompt; may be null                |
 | `{{DOMAIN}}`             | tree path                               |
 | `{{LEAF_SLUG}}`          | derived from leaf title                 |

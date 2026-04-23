@@ -20,7 +20,7 @@ The pack does **not** require Node, Docker, or any language-specific package man
 # Ensure the user-global registry file exists. All skills that resolve project
 # aliases read this file; init-project-brain appends to it.
 mkdir -p ~/.ai
-[ -f ~/.ai/projects.yaml ] || echo "# project-brain registry" > ~/.ai/projects.yaml
+[ -f ~/.config/project-brain/projects.yaml ] || echo "# project-brain registry" > ~/.config/project-brain/projects.yaml
 ```
 
 ## Install procedure
@@ -65,9 +65,9 @@ mkdir -p .claude/skills
 cp -R "$PACK_SRC/skills/"*   .claude/skills/
 # CONVENTIONS.md and supporting assets/scripts land alongside the future brain:
 mkdir -p thoughts
-cp    "$PACK_SRC/CONVENTIONS.md" thoughts/CONVENTIONS.md
-cp -R "$PACK_SRC/assets"         thoughts/.pack-assets
-cp -R "$PACK_SRC/scripts"        thoughts/.pack-scripts
+cp    "$PACK_SRC/CONVENTIONS.md" project-brain/CONVENTIONS.md
+cp -R "$PACK_SRC/assets"         project-brain/.pack-assets
+cp -R "$PACK_SRC/scripts"        project-brain/.pack-scripts
 ```
 
 Verify:
@@ -87,17 +87,17 @@ If your runtime does not have a well-known "skill pack" directory, use a neutral
 ```sh
 cd <your-project-root>
 mkdir -p thoughts
-cp    "$PACK_SRC/CONVENTIONS.md" thoughts/CONVENTIONS.md
-cp -R "$PACK_SRC/skills"         thoughts/.pack-skills
-cp -R "$PACK_SRC/assets"         thoughts/.pack-assets
-cp -R "$PACK_SRC/scripts"        thoughts/.pack-scripts
+cp    "$PACK_SRC/CONVENTIONS.md" project-brain/CONVENTIONS.md
+cp -R "$PACK_SRC/skills"         project-brain/.pack-skills
+cp -R "$PACK_SRC/assets"         project-brain/.pack-assets
+cp -R "$PACK_SRC/scripts"        project-brain/.pack-scripts
 ```
 
-To "invoke" a skill in this layout, open `thoughts/.pack-skills/<skill-name>/SKILL.md` in your agent and ask it to follow the Process section.
+To "invoke" a skill in this layout, open `project-brain/.pack-skills/<skill-name>/SKILL.md` in your agent and ask it to follow the Process section.
 
 ### Step 3 — Run `init-project-brain`
 
-This is the only skill that runs before the brain is scaffolded; every other skill refuses until `thoughts/CONVENTIONS.md` exists. You ran step 2 which puts CONVENTIONS.md in place, so init can now complete the rest of the scaffold.
+This is the only skill that runs before the brain is scaffolded; every other skill refuses until `project-brain/CONVENTIONS.md` exists. You ran step 2 which puts CONVENTIONS.md in place, so init can now complete the rest of the scaffold.
 
 #### 3a. Claude Code
 
@@ -123,17 +123,17 @@ python3 .pack-scripts/verify-tree.py
 # Expected: exit 0, prints "PASS".
 
 # Confirm the project alias registered:
-grep -A5 "^$(basename $(cd .. && pwd)):" ~/.ai/projects.yaml
+grep -A5 "^$(basename $(cd .. && pwd)):" ~/.config/project-brain/projects.yaml
 # (Or grep for whatever alias you chose during init — it's case-sensitive.)
 ```
 
 The install is complete when:
 
-1. `thoughts/` exists at the project root.
-2. `thoughts/CONVENTIONS.md` is present and its version frontmatter matches the pack's current version.
-3. `thoughts/tree/NODE.md` exists, plus one `NODE.md` per top-level domain you configured.
-4. `thoughts/thread-index.md` and `thoughts/current-state.md` exist.
-5. `~/.ai/projects.yaml` contains your new project's entry with a `brain:` path pointing at `thoughts/` and a `remotes:` list with at least one entry.
+1. `project-brain/` exists at the project root.
+2. `project-brain/CONVENTIONS.md` is present and its version frontmatter matches the pack's current version.
+3. `project-brain/tree/NODE.md` exists, plus one `NODE.md` per top-level domain you configured.
+4. `project-brain/thread-index.md` and `project-brain/current-state.md` exist.
+5. `~/.config/project-brain/projects.yaml` contains your new project's entry with a `brain:` path pointing at `project-brain/` and a `remotes:` list with at least one entry.
 6. The bootstrap commit is on your current branch (not pushed unless you asked `init` to push).
 7. `verify-tree` exits 0.
 
@@ -149,18 +149,18 @@ If an upgrade breaks `verify-tree`, revert `CONVENTIONS.md` to your previous ver
 
 ## Uninstall
 
-The pack has no runtime state outside `thoughts/` and `~/.ai/projects.yaml`. To uninstall:
+The pack has no runtime state outside `project-brain/` and `~/.config/project-brain/projects.yaml`. To uninstall:
 
 ```sh
 cd <your-project-root>
 # Remove the brain:
-rm -rf thoughts/
+rm -rf project-brain/
 # If installed at Claude Code layout, also:
 rm -rf .claude/skills/{init-project-brain,new-thread,update-thread,park-thread,discard-thread,promote-thread-to-tree,finalize-promotion,discard-promotion,multi-agent-debate,materialize-context,verify-tree}
 
-# Remove this project's registry entry (edit ~/.ai/projects.yaml by hand — the
+# Remove this project's registry entry (edit ~/.config/project-brain/projects.yaml by hand — the
 # registry is shared across projects so mass-editing is unsafe).
-${EDITOR:-vi} ~/.ai/projects.yaml
+${EDITOR:-vi} ~/.config/project-brain/projects.yaml
 ```
 
 Every commit the pack ever made is conventional-commits style and scoped by thread or leaf slug, so reverting the history is straightforward if that is what you need instead of a clean uninstall.

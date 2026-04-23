@@ -3,13 +3,15 @@ name: verify-brain
 on:
   push:
     paths:
-      - 'thoughts/**'
+      - 'project-brain/**'
+      - 'thoughts/**'           # retained for rc3 brains mid-migration
       - 'skills/**'
       - 'scripts/**'
       - 'CONVENTIONS.md'
       - '.github/workflows/verify-brain.yml'
   pull_request:
     paths:
+      - 'project-brain/**'
       - 'thoughts/**'
       - 'skills/**'
       - 'scripts/**'
@@ -35,10 +37,13 @@ jobs:
 
       - name: Run verify-tree
         run: |
-          if [ -d "thoughts" ]; then
-            python3 scripts/verify-tree.py
+          if [ -d "project-brain" ]; then
+            python3 scripts/verify-tree.py --brain project-brain
+          elif [ -d "thoughts" ]; then
+            echo "::warning::legacy thoughts/ directory detected; run scripts/migrate-brain-dir.sh to migrate to the rc4 layout."
+            python3 scripts/verify-tree.py --brain thoughts
           else
-            echo "No thoughts/ directory found (pack repo, not a brain); skipping brain validation."
+            echo "No project-brain/ or thoughts/ directory found (pack repo, not a brain); skipping brain validation."
           fi
 
       - name: Run validator unit tests

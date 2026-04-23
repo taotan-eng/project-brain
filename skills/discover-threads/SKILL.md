@@ -1,11 +1,11 @@
 ---
 name: discover-threads
 description: Read-only discovery skill that queries per-thread frontmatter ad-hoc with rich filters (status, assignment, maturity, domain, review requirement, stale-thread detection, PR state) and returns filtered views on demand. Works even if thread-index.md is stale. Supports table, JSON, CSV, YAML, and path-only output formats. Use when the user says "what threads are assigned to me", "what parked threads are blocking promotion", "what stale threads in engineering", "threads requiring two-human review", or needs a machine-readable feed for downstream tooling.
-version: 0.1.1
+version: 1.0.0-rc4
 pack: project-brain
 requires:
   - "read:[brain-root]"
-  - "read:~/.ai/projects.yaml"
+  - "read:~/.config/project-brain/projects.yaml"
   - Bash (optional; only for PR state checks via gh)
 ---
 
@@ -59,9 +59,9 @@ All flags are optional and combinable AND-style. If no filters are supplied, all
 
 The skill **refuses** if any of these are not met.
 
-1. `brain_path` resolves to a directory containing `CONVENTIONS.md`. Defaults to the nearest ancestor `thoughts/` directory; use `--brain=<path>` to override.
-2. `thoughts/threads/` exists and is readable.
-3. If `--include-archived`, `thoughts/archive/` is readable.
+1. `brain_path` resolves to a directory containing `CONVENTIONS.md`. Defaults to the nearest ancestor `project-brain/` directory; use `--brain=<path>` to override.
+2. `project-brain/threads/` exists and is readable.
+3. If `--include-archived`, `project-brain/archive/` is readable.
 4. If `--check-pr-state`, `gh` is available on the PATH. Absence is a soft fail: the skill continues with a warning and omits the `pr_state` column.
 5. All flag values are valid per the table above. Invalid `--status`, `--maturity`, `--sort`, or `--format` values result in immediate refusal with usage hints.
 6. Date filter values parse correctly. Malformed relative or ISO-8601 dates result in refusal with a clear error.
@@ -74,7 +74,7 @@ The skill **refuses** if any of these are not met.
 Each step is read-only and idempotent.
 
 1. **Resolve inputs.** Infer `brain_path` from cwd or `--brain` flag. Parse all filter flags. Validate flag values; refuse on error. Compute the effective `--status` list (default: `active,parked,in-review` unless `--include-archived` is set, then also include `archived`). Parse date filters to absolute timestamps.
-2. **Enumerate threads.** Scan `thoughts/threads/*/thread.md` for active/parked threads and `thoughts/archive/*/thread.md` if `--include-archived` is set. Collect file paths.
+2. **Enumerate threads.** Scan `project-brain/threads/*/thread.md` for active/parked threads and `project-brain/archive/*/thread.md` if `--include-archived` is set. Collect file paths.
 3. **Parse frontmatter.** For each `thread.md`, parse YAML frontmatter. Extract: `id`, `title`, `status`, `maturity`, `created_at`, `created_by`, `last_modified_at`, `last_modified_by`, `assigned_to`, `review_requirement`, `tree_domain`, `tree_prs`, `parked_at`, `parked_by`, `parked_reason`, `unpark_trigger`, `archived_at`. On parse failure, emit a warning and skip the thread (do not halt); accumulate a list of malformed-frontmatter threads to report.
 4. **Apply filters.** For each parsed thread, test against all supplied filters (AND-logic):
    - `--status`: thread status is in the list.
@@ -189,8 +189,8 @@ JSON format:
 
 Paths format (one per line):
 ```
-/Users/.../thoughts/threads/hire-backend-lead/thread.md
-/Users/.../thoughts/threads/evaluate-crm-vendors/thread.md
+/Users/.../project-brain/threads/hire-backend-lead/thread.md
+/Users/.../project-brain/threads/evaluate-crm-vendors/thread.md
 ```
 
 ## Frontmatter flips
@@ -252,11 +252,20 @@ Streams file paths for piping to other tools.
 - Output is streamed to stdout or written to a file per the format/redirect.
 - If `--check-pr-state` was set and `gh` is absent, a warning appears on stderr; the output continues without the `pr_state` column.
 
+### Verbosity contract
+
+Reads `verbosity` from `<brain>/config.yaml` (env override: `PROJECT_BRAIN_VERBOSITY`). Defaults to `terse`.
+
+- **terse** (default): one acknowledgement line naming the action + target, then `Done.` No tool-output echo, no "let me..." preamble.
+  - Example output: `Found 7 threads matching filter. (table printed.) Done.`
+- **normal**: structured summary of what changed (file paths, artifact counts), no conversational framing.
+- **verbose**: full narration (pre-rc4 default). Use for debugging.
+
 ## Failure modes
 
 | Failure | Cause | Response |
 |---------|-------|----------|
-| Brain root not found | No `thoughts/CONVENTIONS.md` up the tree; no `--brain` given | refuse — suggest `--brain=<path>` or `cd` to a project dir |
+| Brain root not found | No `project-brain/CONVENTIONS.md` up the tree; no `--brain` given | refuse — suggest `--brain=<path>` or `cd` to a project dir |
 | Invalid `--status` value | Typo; not in `{active, parked, in-review, archived}` | refuse — list valid options |
 | Invalid `--maturity` value | Not in `{exploring, refining, locking}` | refuse — list valid options |
 | Invalid `--sort` value | Not in `{modified-desc, created-desc, status, slug}` | refuse — list valid options |
