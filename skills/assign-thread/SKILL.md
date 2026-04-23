@@ -32,11 +32,11 @@ Every assignment change is recorded in an audit trail appended to the thread bod
 | `operation`       | flag (`--add`, `--remove`, `--set`, `--clear`) | yes | Exactly one of the four mutation modes. Mutually exclusive.              |
 | `handles`         | user prompt (comma-separated)   | cond.    | List of handles to add/remove/set. Required for `--add`, `--remove`, `--set`; forbidden for `--clear`. |
 | `note`            | user prompt                     | no       | Optional free-form note explaining the assignment change (e.g., "handoff to Alice per 1:1").    |
-| `actor`           | flag or git config              | no       | Override for "who performed this action" in the audit line. Defaults to `git config user.email`, then `git config user.name`. |
+| `actor`           | `--actor <email>` flag or `$EMAIL` env var | no       | Override for "who performed this action" in the audit line. Resolution: `--actor` flag → `$EMAIL` → `$USER@localhost`. **No `git config` invocation** (rc4 pre-promote skills are git-free). |
 | `push`            | flag (`--push`)                 | no       | Push to the default remote after commit. Default off.                                           |
 | `--brain=<path>`  | user prompt or cwd inference    | no       | Absolute path to the brain root. Defaults to the nearest ancestor `project-brain/` directory.        |
 
-Prompt strategy: resolve `thread_slug` from cwd. Ask which operation via `AskUserQuestion` if not supplied as a flag. For each operation, prompt for the handles (none for `--clear`). Optionally prompt for a note. Infer the actor from git config.
+Prompt strategy: resolve `thread_slug` from cwd. Ask which operation via `AskUserQuestion` if not supplied as a flag. For each operation, prompt for the handles (none for `--clear`). Optionally prompt for a note. Infer the actor from `$EMAIL` env var (fall back to `$USER@localhost`). **Do NOT invoke `git config`** — rc4 keeps pre-promote skills git-free.
 
 | `--dry-run`       | boolean                         | no       | Print the plan (operation, assigned_to changes, audit trail, commit message) without performing any file writes, git mutations, or audit-log writes. See Process § Dry-run semantics. |
 
@@ -51,15 +51,15 @@ The skill **refuses** if any of these are not met.
 5. For `--add` and `--set`: `handles` is a non-empty comma-separated list.
 6. For `--remove`: `handles` is a non-empty comma-separated list.
 7. For `--clear`: no `handles` parameter is given.
-8. Working tree has no uncommitted changes to `project-brain/threads/[thread_slug]/thread.md` (don't mix an uncommitted edit into the assign commit). `git status --porcelain project-brain/threads/[thread_slug]/` must be empty.
+8. *(rc4: this precondition is deferred.)* Pre-rc4 this skill refused when the thread had uncommitted changes, to prevent mixing an in-flight edit into the assignment audit line. rc4 makes the skill pure-file — it only appends to the body's `## Assignment history` section — so uncommitted thread edits are harmless. **No `git status` invocation.** The user commits whenever they want.
 9. Standard path-traversal guard: `thread_slug` contains only `[a-z0-9-]`, matches the slug in `project-brain/threads/`, and the resolved path is canonical (no `..` escapes).
-10. `git config user.email` returns a value (used to populate the actor in the audit line if `--actor` not supplied).
+10. `actor` is resolvable. Read from `$EMAIL` env var; fall back to `$USER@localhost`. **No `git` binary is invoked.** Users can override with `--actor <email>`.
 
 ## Process
 
 Each step is atomic. Failure at step N leaves the tree in whatever state it was after step N-1.
 
-1. **Resolve inputs.** Infer `thread_slug` from cwd. If `operation` is not a flag, ask via `AskUserQuestion` which of the four modes to run. Prompt for operation-specific inputs (`handles`, `note`). Infer `actor` from `git config user.email` or `git config user.name` as fallback (or use `--actor` override).
+1. **Resolve inputs.** Infer `thread_slug` from cwd. If `operation` is not a flag, ask via `AskUserQuestion` which of the four modes to run. Prompt for operation-specific inputs (`handles`, `note`). Infer `actor` from `$EMAIL` env var; fall back to `$USER@localhost`. Users override with `--actor <email>`. **Do NOT invoke `git config` in the default flow** — rc4 defers git to promote-time.
 2. **Validate preconditions.** Run checks 1–10 above. On any failure, stop and report the specific precondition.
 3. **Load thread frontmatter.** Read `project-brain/threads/[thread_slug]/thread.md` and parse the YAML frontmatter. Detect the current `assigned_to` value (if absent, treat as an empty list).
 4. **Compute new `assigned_to` value per operation.**
@@ -81,24 +81,20 @@ Example:
 
 The operation string is one of: `add`, `remove`, `set`, or `clear`. The `{{handles-involved}}` is the comma-separated list of handles touched (for `clear`, this is `(field removed)`). The note is included iff supplied, prefixed by `—`.
 
-7. **Stage thread file.** Run `git add project-brain/threads/[thread_slug]/thread.md`.
-8. **Final step — rebuild indexes.** Invoke `verify-tree --rebuild-index`. Handle exit codes per the Stage 2 contract (see § Rebuild contract):
-   - Exit 0: proceed to commit.
+7. **Rebuild indexes.** Invoke `verify-tree --rebuild-index`. Handle exit codes per the Stage 2 contract (see § Rebuild contract):
+   - Exit 0: proceed.
    - Exit 1 (source validation failure): abort with repair hint.
    - Exit 2 (write / verify failure): abort, filesystem issue.
-9. **Commit.** Stage both index files and the thread directory in one commit:
+8. **Report.** Return a confirmation summary: old `assigned_to` list, new list, the audit-trail entry written, and the list of files modified (`thread.md`, `thread-index.md`, `current-state.md`). Include a one-line reminder that the user should `git add` + `git commit` these files when they're ready to checkpoint. **The skill does NOT invoke git** — rc4 pre-promote skills are pure file operations.
+
+Suggested follow-up commit (the user runs this themselves):
 
 ```
 git add project-brain/threads/[slug]/ project-brain/thread-index.md project-brain/current-state.md
 git commit -m "assign-thread: [slug] [operation] [handles]"
 ```
 
-Commit message format follows § 11.6 conventions (scope is the thread slug, subject is the operation and handles).
-
-10. **Push (optional).** If `--push` was set, run `git push` to the default remote. Otherwise, skip.
-11. **Report.** Return a confirmation summary: old `assigned_to` list, new list, commit SHA, and the audit-trail entry written.
-
-No automatic push by default — matches `update-thread` and `park-thread` conventions.
+Commit message format follows § 11.6 conventions (scope is the thread slug, subject is the operation and handles). The `--push` flag from pre-rc4 is retired — users push themselves if they want to.
 
 ### Dry-run semantics
 
@@ -125,10 +121,7 @@ Print the plan to stdout including a clear "before" and "after" view of the `ass
 
 ### Git operations
 
-| Operation                              | Trigger | Notes                                                            |
-|----------------------------------------|---------|-------------------------------------------------------------------|
-| `git add project-brain/ && git commit -m …` | step 9  | Single commit per invocation                                      |
-| `git push` (if `--push`)               | step 10 | Optional; not run by default                                      |
+**None.** rc4 pre-promote skills are pure file operations; the skill reports the files it modified and the user runs `git add` + `git commit` themselves when they want to checkpoint. A suggested commit command is included in the Report step for copy-paste.
 
 ### External calls
 
@@ -190,7 +183,7 @@ No other fields are touched. `status`, `maturity`, `parked_*`, `archived_*` are 
 | `--clear` with non-empty `handles`             | Conflicting args                                                              | refuse — `--clear` takes no handles                                    |
 | Empty `handles` for `--add`, `--remove`, `--set` | Invalid input                                                                | refuse — ask for a non-empty handle list                               |
 | Uncommitted edits to thread.md                 | Concurrent edit risk                                                          | refuse — ask user to commit or stash                                   |
-| `git config user.email` empty (no `--actor`)   | Git not configured                                                            | refuse — ask user to configure git or supply `--actor`                 |
+| `$EMAIL` empty (no `--actor`)                  | No email configured                                                            | refuse — ask user to configure git or supply `--actor`                 |
 | Rebuild source-validation failure              | Thread frontmatter schema violations                                          | refuse — report violating thread; user must repair before retrying     |
 | Rebuild write failure                          | Filesystem / permissions issue                                               | refuse — live index files unchanged (atomic); report error             |
 | Path traversal attempt in `thread_slug`        | Malicious or malformed slug (e.g., `../../../etc/passwd`)                    | refuse — reject slug, report invalid characters                        |

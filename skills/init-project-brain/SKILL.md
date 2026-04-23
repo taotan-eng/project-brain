@@ -1,6 +1,6 @@
 ---
 name: init-project-brain
-description: One-time scaffold of the project-brain skeleton into any directory (git not required by default in rc4). Default invocation: zero interactive questions and zero git invocations. Alias=slugified dir name, title=title-cased dir name, owner=git config user.email (read from ~/.gitconfig if available; falls back to $USER@localhost with a TODO marker). Creates project-brain/ with CONVENTIONS.md, config.yaml, tree/NODE.md, empty threads/ and archive/, plus a .gitignore for transcripts and attachments. Optional --interactive flag prompts for all values. Optional --init-git runs git init + scaffold commit and opts in to the git-based preconditions. Optional --no-registry skips appending an alias entry to ~/.config/project-brain/projects.yaml. Use when the user says "set up project brain", "install project-brain here", or adopts this pack in a new directory first time.
+description: One-time scaffold of the project-brain skeleton into any directory (git not required by default in rc4). Default invocation: zero interactive questions and **zero git invocations** — git is touched only at promotion time, not here. Alias=slugified dir name, title=title-cased dir name, owner=$EMAIL env var if set, else $USER@localhost with a TODO marker. Creates project-brain/ with CONVENTIONS.md, config.yaml, tree/NODE.md, empty threads/ and archive/, plus a .gitignore for transcripts and attachments. Optional --interactive flag prompts for all values. Optional --init-git runs git init + scaffold commit and opts in to git-based preconditions + `git config user.email` as an additional owner source. Optional --no-registry skips appending an alias entry to ~/.config/project-brain/projects.yaml. Use when the user says "set up project brain", "install project-brain here", or adopts this pack in a new directory first time.
 version: 1.0.0-rc4
 pack: project-brain
 requires:
@@ -33,19 +33,20 @@ The skill is deliberately opinionated at a few points: it pre-scaffolds top-leve
 |---------------------|---------------------------------|----------|-------------------------------------------------------------------------------------------|
 | `project_alias`     | user prompt                     | yes      | Kebab-case key for `~/.config/project-brain/projects.yaml` (§ 11.1). Must not already exist in the registry. |
 | `project_title`     | user prompt                     | yes      | Human-readable name used in `thread-index.md` and `current-state.md` headers.             |
-| `brain_path`        | user prompt (default = cwd)     | yes      | Absolute path where `project-brain/` is to live. Defaults to `<cwd>/thoughts`.                 |
-| `remotes`           | `git remote -v` + user prompt   | yes      | List of remotes the brain repo may push to. Detected from git; user confirms each entry.  |
-| `default_remote`    | user prompt                     | conditional | Required when `remotes` has >1 entry; defaults to the sole entry otherwise.            |
-| `default_base_per_remote` | user prompt               | yes      | Per-remote default base branch (usually `main` or `master`). One value per remote.        |
+| `brain_path`        | user prompt (default = cwd)     | yes      | Absolute path where `project-brain/` is to live. Defaults to `<cwd>/project-brain`.       |
+| `remotes`           | **`--init-git` only** — `git remote -v` + user prompt | conditional | List of remotes the brain repo may push to. Only collected when `--init-git` is passed. In the default flow the registry entry (if written at all) omits the `remotes:` block and promote-time fills it in. |
+| `default_remote`    | **`--init-git` only** — user prompt | conditional | Required when `remotes` has >1 entry; defaults to the sole entry otherwise. Default flow skips. |
+| `default_base_per_remote` | **`--init-git` only** — user prompt | conditional | Per-remote default base branch (usually `main` or `master`). Default flow skips.   |
 | `domain_taxonomy`   | user prompt                     | yes      | § 10.1 top-level domains as a line-separated list (e.g. `engineering / product / operations`). 1–8 entries. |
 | `debate_personas`   | user prompt                     | no       | § 10.2 reviewer personas. Default empty — easy to add later by hand-editing `CONVENTIONS.md`. |
 | `build_toolchain`   | user prompt                     | no       | § 10.3 test/lint/build commands. Default empty.                                           |
-| `owner`             | `git config user.email`         | yes      | Who ran init; recorded in the bootstrap commit.                                           |
+| `owner`             | `$EMAIL` env var; falls back to `$USER@localhost` (with TODO marker). If `--init-git` is set, `git config user.email` is also consulted between `$EMAIL` and the fallback. | yes      | Who ran init; recorded in the bootstrap commit.                                           |
 
 **Zero-Q&A defaults (new in v1.0.0-rc4):**
 - `project_alias`: kebab-case slug of current directory name (e.g., `My App` → `my-app`). Validated per § 11.1.
 - `project_title`: title-cased directory name (e.g., `my-app` → `My App`).
-- `owner`: `git config user.email`, falls back to `$USER@localhost` if empty. When the fallback is used, the skill writes a visible TODO marker into CONVENTIONS.md § 10 (see Process step 4) so the user sees it on first open of the file — fixing it later is one edit, not a hunt.
+- `owner` (default flow): `$EMAIL` environment variable if set; otherwise `$USER@localhost` with a visible TODO marker prepended to CONVENTIONS.md § 10 (see Process step 4). **The default flow does NOT invoke `git config`.** Git integration in agentic IDEs triggers a permission prompt per invocation; rc4 defers every git touch to promote-time (or to explicit `--init-git` at install) so capture / refine / install all run silently.
+- `owner` (with `--init-git`): `$EMAIL` → `git config user.email` → `$USER@localhost` TODO fallback. The git consultation is legitimate here because `--init-git` is already invoking git for `init` + `commit`.
 - `domain_taxonomy`: `engineering`. A single default domain. User adds more by hand-editing CONVENTIONS.md § 10.1 or re-runs with `--interactive`.
 
 **Prompt strategy:** Default invocation asks zero interactive questions. With `--interactive` flag, one call collects `project_alias` + `project_title` + `domain_taxonomy`. Remote/base confirmation and persona/toolchain setup happen only with `--interactive`.
@@ -57,7 +58,7 @@ The skill **refuses** if any of these are not met. Preconditions 1, 3, 6 apply *
 1. (Only if `--init-git`) Current working directory is inside a git repository (`git rev-parse --is-inside-work-tree` returns `true`). Without `--init-git` the skill does not care — the brain is just a directory full of markdown.
 2. The target `brain_path` does not already exist. If it does, refuse — direct the user at a hypothetical `repair-brain` or ask them to move the existing directory first.
 3. (Only if `--init-git`) Working tree is clean on `main` (or the project's default branch). Init's `--init-git` commits directly to that branch; uncommitted changes would be swept into the bootstrap commit.
-4. `git config user.email` is *read* to seed the `owner` default. This works whether or not we're inside a git repo (`git config` reads `~/.gitconfig` globally). If it returns nothing, fall back to `$USER@localhost` and emit the TODO marker described in Process step 4. **This is never a refuse — it's always best-effort.**
+4. The `owner` field is seeded from `$EMAIL` (env var). If `$EMAIL` is unset, fall back to `$USER@localhost` and emit the TODO marker described in Process step 4. **The default flow does not invoke `git config` at all** — any `git` binary call triggers a permission prompt in agentic IDEs, and rc4 defers all git to promote-time. Only when `--init-git` is set does the skill additionally consult `git config user.email` as a fallback between `$EMAIL` and `$USER@localhost`. This precondition is always best-effort — it never refuses.
 5. `~/.config/project-brain/projects.yaml`, if it exists, does **not** already contain `project_alias`. If it does, prompt — suggest a suffixed alias (`<alias>-2`) or ask the user to pick a different one. (Skipped entirely if `--no-registry` is set.)
 6. (Only if `--init-git` AND the user wants a registry entry with remote info) `git remote -v` returns at least one remote, OR the user explicitly confirms offline-only scaffolding. Without `--init-git`, the registry entry omits the `remotes:` block regardless.
 7. Each entry in `domain_taxonomy` matches the slug rules of § 11.1 (kebab-case, no sub-paths — sub-nesting emerges through promotion, not init).
@@ -66,9 +67,12 @@ The skill **refuses** if any of these are not met. Preconditions 1, 3, 6 apply *
 
 Each step is atomic. A failure at step N leaves the filesystem in whatever state it was after step N-1; no partial scaffolds are left committed.
 
-1. **Resolve inputs.** If `--interactive` is set, prompt for all values (project_alias, project_title, domain_taxonomy, remotes/bases, personas, toolchain). Otherwise, apply zero-Q&A defaults: derive alias and title from directory name, set owner from git config, set domain_taxonomy to `[engineering]`. Store inferred `brain_path` as `<cwd>/project-brain` or explicit `--brain-path` value.
+1. **Resolve inputs.** If `--interactive` is set, prompt for all values (project_alias, project_title, domain_taxonomy, remotes/bases, personas, toolchain). Otherwise, apply zero-Q&A defaults: derive alias and title from directory name, set `domain_taxonomy` to `[engineering]`. For `owner`:
+    - Default flow: read `$EMAIL` env var. If empty, fall back to `$USER@localhost` and set a flag to emit the TODO marker in step 4. **Do NOT invoke `git config user.email` in this branch** — triggering a git permission prompt defeats the zero-ceremony install.
+    - `--init-git` flow: read `$EMAIL` → else `git config user.email` → else `$USER@localhost`. Git is already being invoked for `init` + `commit`, so consulting git config here is consistent.
+    Store inferred `brain_path` as `<cwd>/project-brain` or explicit `--brain-path` value.
 2. **Validate preconditions.** Run only the preconditions that apply to the current invocation:
-    - ALWAYS check: #2 (brain_path doesn't exist), #4 (read git config best-effort — never fails), #5 (registry alias collision, skip if `--no-registry`), #7 (domain_taxonomy slug rules).
+    - ALWAYS check: #2 (brain_path doesn't exist), #4 (read `$EMAIL` env var best-effort — never fails; does not invoke git in the default flow), #5 (registry alias collision, skip if `--no-registry`), #7 (domain_taxonomy slug rules).
     - ONLY if `--init-git` is set: also check #1 (inside a git repo), #3 (working tree clean), #6 (remotes, if the user wants them in the registry entry).
     - **Do NOT run `git rev-parse --is-inside-work-tree` unless `--init-git` is set.** The default flow is pure file ops — probing for a git repo is out of scope and triggers noisy permission prompts in agentic IDEs for no reason.
     - On failure, stop and report the specific precondition. Do not offer to `git init` unless the user passed `--init-git`; without that flag, git is irrelevant.
@@ -78,14 +82,16 @@ Each step is atomic. A failure at step N leaves the filesystem in whatever state
     - § 10.2 Debate personas — replaced with `debate_personas` if provided; otherwise keep the placeholder with a "— TBD; add personas before invoking `multi-agent-debate`" comment.
     - § 10.3 Build toolchain — replaced with `build_toolchain` if provided; otherwise leave as commented placeholders.
     - § 10.4 — untouched unless `role_extensions` was volunteered (rare at init time).
-    - **Owner TODO marker (v1.0.0-rc4).** If the resolved `owner` is the `$USER@localhost` fallback (because `git config user.email` was unset or empty), prepend a visible HTML comment block to § 10 that reads:
+    - **Owner TODO marker (v1.0.0-rc4).** If the resolved `owner` is the `$USER@localhost` fallback (because `$EMAIL` was unset and, if `--init-git` was set, `git config user.email` was also empty), prepend a visible HTML comment block to § 10 that reads:
       ```
       <!-- TODO(project-brain init): The brain was scaffolded with owner = "<$USER>@localhost"
-           because `git config user.email` was unset. Replace every `owner: <$USER>@localhost`
-           reference in this brain (CONVENTIONS.md, any thread.md, the ~/.config/project-brain
-           registry entry if present) with your real email, then delete this TODO block. -->
+           because no email was configured. Set $EMAIL in your shell or, if using git,
+           run `git config --global user.email <you@example.com>`. Then replace every
+           `owner: <$USER>@localhost` reference in this brain (CONVENTIONS.md, any thread.md,
+           the ~/.config/project-brain registry entry if present) with your real email,
+           and delete this TODO block. -->
       ```
-      When the owner is a real email from git config, do NOT emit this block. The marker must be impossible to miss: first thing inside § 10, before § 10.1.
+      When the owner is a real email from `$EMAIL` or (under `--init-git`) git config, do NOT emit this block. The marker must be impossible to miss: first thing inside § 10, before § 10.1.
    Write to `<brain_path>/CONVENTIONS.md`. Do not modify the sections above § 10 — those are the pack's shared contract.
 5. **Scaffold the root NODE.md.** Copy `assets/NODE-template.md` to `<brain_path>/tree/NODE.md`. Fill placeholders: `{{TITLE}}` = `"<project_title> — Knowledge Tree"`, `{{DOMAIN}}` = `/`, `{{PRIMARY_PROJECT}}` = `project_alias`. Populate the `## Sub-nodes` section with one bullet per entry in `domain_taxonomy`, each linked to the sub-directory's `NODE.md`.
 6. **Scaffold per-domain NODE.md.** For each `<domain>` in `domain_taxonomy`:
@@ -94,25 +100,41 @@ Each step is atomic. A failure at step N leaves the filesystem in whatever state
 7. **Write `thread-index.md`.** Copy `assets/thread-index-template.md` to `<brain_path>/thread-index.md`. Fill `{{PRIMARY_PROJECT}}` and `{{PROJECT_TITLE}}`.
 8. **Write `current-state.md`.** Copy `assets/current-state-template.md` to `<brain_path>/current-state.md`. Fill `{{PRIMARY_PROJECT}}` and `{{PROJECT_TITLE}}`.
 9. **Place `.gitkeep`** in `<brain_path>/threads/` and `<brain_path>/archive/` so empty directories stay tracked.
-10. **Update `~/.config/project-brain/projects.yaml`.** Create the file if it does not exist (with a top-level comment explaining what it is). Append an entry:
+10. **Write `config.yaml` (per-project).** Create `<brain_path>/config.yaml` with:
     ```yaml
-    <project_alias>:
-      root: <path to repo root>
-      brain: <brain_path>
-      remotes:
-        - name: <remote-name>
-          url: <git remote get-url output>
-          default_base: <default_base>
-      default_remote: <default_remote>
+    primary_project: <project_alias>
+    verbosity: terse
+    transcript_logging: on
+    aliases: {}
     ```
-    Do not touch other projects' entries.
+    See CONVENTIONS § 2.1 for the full schema. The `aliases:` block stays empty at init; cross-project references are added by hand later if needed.
+
 11. **Write `.gitignore`.** Create `<brain_path>/.gitignore` with entries for `transcript.md` and `attachments/` directories (per CONVENTIONS § 2.5).
 
-12. **Conditional git commit.** If `--init-git` is set, run `git add <brain_path>/ <brain_path>/.gitignore && git commit -m "chore(brain): scaffold project-brain for <project_alias>"`. If `--init-git` is NOT set, the skill DOES NOT commit — the user must run `git commit` themselves. (This defers git to user scope per v1.0.0-rc4 design.)
+12. **Update `~/.config/project-brain/projects.yaml`** (skip entirely if `--no-registry`). Create the file if it does not exist (with a top-level comment explaining what it is). Append an entry keyed by `<project_alias>`:
+    - **Default flow (no `--init-git`)** — write a minimal entry WITHOUT a `remotes:` block:
+      ```yaml
+      <project_alias>:
+        root: <path to repo root>
+        brain: <brain_path>
+      ```
+      Do NOT invoke `git remote -v` or `git remote get-url` to discover remotes — the default flow is git-free and the registry entry can grow a `remotes:` section later (users edit by hand, or re-run with `--init-git`, or fill it in at first promote).
+    - **With `--init-git`** — also include `remotes:` + `default_remote:` as collected from `git remote -v`:
+      ```yaml
+      <project_alias>:
+        root: <path to repo root>
+        brain: <brain_path>
+        remotes:
+          - name: <remote-name>
+            url: <git remote get-url output>
+            default_base: <default_base>
+        default_remote: <default_remote>
+      ```
+    Do not touch other projects' entries in either case.
 
-13. **Update `~/.config/project-brain/projects.yaml`.** Unless `--no-registry` is set, create the file if absent. Append an entry with alias, brain_path, remotes (if available), default_remote (if available). If no remotes, omit that section.
+13. **Conditional git commit.** If `--init-git` is set, run `git add <brain_path>/ <brain_path>/.gitignore && git commit -m "chore(brain): scaffold project-brain for <project_alias>"`. If `--init-git` is NOT set, the skill DOES NOT commit — the user runs `git commit` themselves if (and when) they want to.
 
-14. **Report.** Return the brain path, the next-step prompt ("You can now run `new-thread` to capture the first thought."), a note about `git commit` if it wasn't run (if `--init-git` was not set), and — if the `$USER@localhost` owner fallback was triggered in step 1 — a one-line reminder: "owner was set to `<$USER>@localhost` (git user.email unset); fix the TODO marker at the top of § 10 in CONVENTIONS.md before committing."
+14. **Report.** Return the brain path, the next-step prompt ("You can now run `new-thread` to capture the first thought."), a note about `git commit` if it wasn't run (if `--init-git` was not set), and — if the `$USER@localhost` owner fallback was triggered in step 1 — a one-line reminder: "owner was set to `<$USER>@localhost` (no email configured); fix the TODO marker at the top of § 10 in CONVENTIONS.md before committing."
 
 ## Side effects
 
@@ -121,7 +143,9 @@ Each step is atomic. A failure at step N leaves the filesystem in whatever state
 | Path (relative to repo root)        | Operation | Notes                                                             |
 |-------------------------------------|-----------|-------------------------------------------------------------------|
 | `project-brain/`                         | create    | Directory; all subsequent paths live under this.                  |
-| `project-brain/CONVENTIONS.md`           | create    | Copied from pack, § 10 spliced with user answers.                 |
+| `project-brain/CONVENTIONS.md`           | create    | Copied from pack, § 10 spliced with user answers. TODO marker prepended if the `$USER@localhost` owner fallback was triggered. |
+| `project-brain/config.yaml`              | create    | rc4 per-project config with `primary_project`, default `verbosity: terse`, `transcript_logging: on`, empty `aliases: {}`. |
+| `project-brain/.gitignore`               | create    | Defaults for `transcript.md` + `attachments/` per CONVENTIONS § 2.5. |
 | `project-brain/tree/NODE.md`             | create    | Root node; `## Sub-nodes` lists every domain.                     |
 | `project-brain/tree/<domain>/NODE.md`    | create    | One per entry in `domain_taxonomy`; empty `## Leaves`.            |
 | `project-brain/threads/.gitkeep`         | create    | Keeps empty directory in git.                                     |
@@ -133,21 +157,30 @@ Each step is atomic. A failure at step N leaves the filesystem in whatever state
 
 | Path                        | Operation        | Notes                                                           |
 |-----------------------------|------------------|-----------------------------------------------------------------|
-| `~/.config/project-brain/projects.yaml`       | create or append | Top-level mapping; one new entry keyed by `project_alias`.      |
-| `~/.ai/` (directory)        | create           | Only if missing; mode 0755.                                     |
+| `~/.config/project-brain/projects.yaml`       | create or append | Top-level mapping; one new entry keyed by `project_alias`. Skipped entirely when `--no-registry` is set. |
+| `~/.config/project-brain/` (directory)        | create           | Only if missing; mode 0755. Skipped when `--no-registry` is set. |
 
 ### Git operations
 
-| Operation                        | Trigger | Notes                                                          |
-|----------------------------------|---------|----------------------------------------------------------------|
-| `git add project-brain/`              | step 11 | Stages the entire brain scaffold.                              |
-| `git commit -m …`                | step 11 | Single bootstrap commit on the current branch (usually main).  |
-| `git push <remote> <branch>`     | step 12 | Optional; gated by user confirmation.                          |
+**Default flow (no `--init-git`): zero git operations.** Listed below for the `--init-git` flow only.
+
+| Operation                        | Trigger                               | Notes                                                          |
+|----------------------------------|---------------------------------------|----------------------------------------------------------------|
+| `git init`                       | `--init-git` + not-yet-a-git-repo     | Creates a fresh git repo in the project root.                  |
+| `git add project-brain/`         | `--init-git`, Process step 12         | Stages the entire brain scaffold + its `.gitignore`.           |
+| `git commit -m …`                | `--init-git`, Process step 12         | Single bootstrap commit on the current branch (usually main).  |
+| `git push <remote> <branch>`     | *never automatic* — user runs manually | The skill does not push. Users push themselves when ready.    |
 
 ### External calls
 
-- **`git init` (if `--init-git` is set)** — only if the directory is not already a git repo. User confirms before running.
-- **`git config user.email`** — read-only, to populate the `owner` field.
+Default flow (no `--init-git`): **none.** The skill does `mkdir`, `read/write` of markdown files, and reads the `$EMAIL` and `$USER` env vars. No `git` binary invocation, no `gh`, no network.
+
+With `--init-git`:
+
+- **`git init`** — only if the directory is not already a git repo. User confirms before running.
+- **`git config user.email`** — read-only, consulted as a fallback owner source between `$EMAIL` and `$USER@localhost`.
+- **`git add` + `git commit`** — bootstrap commit of the scaffolded brain.
+- **`git remote -v`** (optional) — consulted when the registry entry should record remotes.
 
 ## Outputs
 
@@ -195,11 +228,12 @@ Reads `verbosity` from `<brain>/config.yaml` (env override: `PROJECT_BRAIN_VERBO
 
 | Failure                                | Cause                                                        | Response                                      |
 |----------------------------------------|--------------------------------------------------------------|-----------------------------------------------|
-| Not in a git repo                      | `git rev-parse --is-inside-work-tree` returns false          | refuse — ask user to `git init` first         |
-| Brain path already exists              | `project-brain/` already on disk                                  | refuse — direct to `repair-brain` (not yet drafted) |
-| Alias collision in `projects.yaml`     | `project_alias` already registered                           | prompt — suggest `<alias>-2` or new alias     |
-| Dirty working tree                     | Uncommitted changes on the current branch                    | refuse — ask user to stash or commit          |
-| No remotes and offline not confirmed   | `git remote -v` empty, user did not opt in to offline mode   | refuse — ask user to add a remote or confirm offline |
+| Brain path already exists              | `project-brain/` already on disk                             | refuse — direct to `repair-brain` (not yet drafted) or ask user to move/delete existing dir |
+| Alias collision in `projects.yaml`     | `project_alias` already registered                           | prompt — suggest `<alias>-2` or new alias (or pass `--no-registry` to skip the registry step) |
+| Invalid domain slug                    | One of `domain_taxonomy` fails § 11.1                        | refuse — name the offending slug and the rule it violated |
+| Not in a git repo *(only with `--init-git`)* | `git rev-parse --is-inside-work-tree` returns false    | refuse — ask user to `git init` first, or drop the `--init-git` flag to scaffold a plain directory |
+| Dirty working tree *(only with `--init-git`)* | Uncommitted changes on the current branch             | refuse — ask user to stash or commit, or drop `--init-git` |
+| No remotes and offline not confirmed *(only with `--init-git`)* | `git remote -v` empty, user did not opt in to offline mode | refuse — ask user to add a remote, confirm offline, or drop `--init-git` |
 | Slug validation fails on a domain      | One of `domain_taxonomy` violates § 11.1                     | prompt — re-ask for the offending domain      |
 | Pack's `CONVENTIONS.md` not found      | Pack installation broken                                     | refuse — report broken pack                   |
 | Write to `~/.config/project-brain/projects.yaml` fails   | Permissions or disk issue                                    | refuse — leave `project-brain/` uncommitted, tell user to fix and re-run |

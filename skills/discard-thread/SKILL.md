@@ -43,7 +43,7 @@ The skill **refuses** if any of these are not met.
 4. `tree_prs` is empty or absent. A non-empty `tree_prs` means the thread has promotion history, so the correct exit is one of `discard-promotion` (if the most recent PR is CLOSED-unmerged), `finalize-promotion` with `archive` disposition (if MERGED), or manual reconciliation (if still OPEN). The skill refuses and names the right alternative based on `gh pr view` of the most recent entry.
 5. `discard_reason` is non-empty.
 6. Working tree has no uncommitted changes to `project-brain/thread-index.md`, `project-brain/current-state.md`, or the thread's `thread.md`.
-7. `git config user.email` returns a value (used to populate `archived_by`).
+7. `archived_by` is resolvable. Read from `$EMAIL` env var; fall back to `$USER@localhost`. **No `git` binary is invoked.** Users can override with an explicit `--by <email>` flag.
 8. `project-brain/archive/[thread_slug]/` does not exist. A collision suggests an earlier discard was partially rolled back; refuse rather than overwriting.
 
 ## Process
@@ -56,7 +56,7 @@ Each step is atomic. Failure at step N leaves the tree in whatever state it was 
 4. **Flip frontmatter.** In `project-brain/threads/[thread_slug]/thread.md`:
     - `status: active|parked → archived`.
     - Remove `maturity` field. Archived threads do not carry a maturity; § 4.1 says "archived has no maturity."
-    - Add `archived_at: <timestamp>` and `archived_by: <git config user.email>`.
+    - Add `archived_at: <timestamp>` and `archived_by: <$EMAIL or $USER@localhost>`.
     - Add `discard_reason: <string>`.
     - If coming from `parked`: remove `parked_at`, `parked_by`, `parked_reason`, and `unpark_trigger` (if present). These fields are park-only metadata and must not persist into the archived record.
 5. **Move to archive.** Use file-tool to move the entire thread directory from `project-brain/threads/[thread_slug]` to `project-brain/archive/[thread_slug]`. This moves `thread.md`, `decisions-candidates.md`, `open-questions.md`, and any companions.
@@ -176,7 +176,7 @@ When `--dry-run` is set: no files are written; the frontmatter changes, git mv o
 | Empty `discard_reason`                       | Slipped past prompt                                                               | re-prompt — reason is not optional                                       |
 | Archive path collision                       | `archive/[slug]/` already exists (prior partial rollback)                         | refuse — ask user to reconcile manually (either delete the old archive or pick a new slug) |
 | `git mv` fails                               | Case-insensitive filesystem collision, permissions                                | refuse — leave thread in place with frontmatter unchanged                 |
-| `git config user.email` empty                | Git not configured                                                                | refuse — ask user to configure git                                       |
+| `$EMAIL` empty and no `--by` flag                | Git not configured                                                                | refuse — ask user to configure git                                       |
 | Uncommitted edits to unrelated paths         | Conflict risk                                                                     | refuse — ask user to stash or commit                                     |
 | Rebuild source-validation failure            | Thread frontmatter schema violations                                              | refuse — report violating thread; user must repair before retrying       |
 | Rebuild write failure                        | Filesystem / permissions issue                                                   | refuse — live index files unchanged (atomic); report error               |
