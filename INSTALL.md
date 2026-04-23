@@ -36,7 +36,7 @@ claude plugin install project-brain@project-brain
 claude plugin list         # project-brain@project-brain should be enabled
 ```
 
-For Claude Cowork, install via Settings → Plugins (add marketplace URL `https://github.com/taotan-eng/project-brain`, then install `project-brain`), or via [claude.com/plugins](https://claude.com/plugins).
+Claude Cowork's in-app plugin browser (Settings → Extensions) currently surfaces only Anthropic- and partner-curated plugins, so `project-brain` isn't installable from the Cowork UI yet. Cowork users on the same machine as a Claude Code install will pick up the plugin automatically after the CLI install above; otherwise fall back to the manual procedure below.
 
 After a successful plugin install, jump straight to **Step 3 — Run `init-project-brain`**. The plugin runtime has placed the 14 skills where it finds them; you do **not** need to `cp -R` anything.
 

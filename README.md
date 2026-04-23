@@ -57,7 +57,7 @@ claude plugin install project-brain@project-brain
 claude plugin list         # confirms project-brain@project-brain is enabled
 ```
 
-**Claude Cowork (desktop app):** open Settings → Plugins, add the marketplace by URL `https://github.com/taotan-eng/project-brain`, then install `project-brain`. (See also [claude.com/plugins](https://claude.com/plugins).)
+**Claude Cowork (desktop app):** Cowork's in-app plugin browser (Settings → Extensions) currently surfaces only Anthropic- and partner-curated plugins, so `project-brain` isn't searchable there yet. Until the pack is accepted into Anthropic's community directory, Cowork users should install via the Claude Code CLI above (Cowork picks up plugins installed through the CLI on the same machine) or follow the manual procedure below.
 
 Once installed, skip ahead to the first-run scaffold step — the plugin install handles Step 1 + Step 2 of the manual procedure for you. You only need to run `init-project-brain` against your project to get `thoughts/` scaffolded.
 
