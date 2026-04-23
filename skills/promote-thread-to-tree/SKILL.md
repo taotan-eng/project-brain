@@ -39,11 +39,11 @@ Prompt strategy: one `AskUserQuestion` call collects `leaves` (multi-select from
 
 ## Flags
 
-| Flag                  | Description                                                                           |
-|-----------------------|---------------------------------------------------------------------------------------|
-| `--allow-secrets`     | Skip the secret-file precondition (expert mode). Emit a warning if used. Use with care when promoting files known to be non-sensitive but matching secret patterns. |
-
-| `--dry-run`           | Print the plan (leaves, target tree domains, three planned commits on the promote branch, the branch name that would be created, the rendered PR body, and the bookkeeping commit on main) without performing any file writes, git mutations, branch creation, pushes, PR opens, or audit-log writes. See Process § Dry-run semantics. |
+| Flag                     | Description                                                                        |
+|--------------------------|------------------------------------------------------------------------------------|
+| `--allow-secrets`        | Skip the secret-file precondition (expert mode). Emit a warning if used. Use with care when promoting files known to be non-sensitive but matching secret patterns. |
+| `--dry-run`              | Print the plan (leaves, target tree domains, three planned commits on the promote branch, the branch name that would be created, the rendered PR body, and the bookkeeping commit on main) without performing any file writes, git mutations, branch creation, pushes, PR opens, or audit-log writes. See Process § Dry-run semantics. |
+| `--skip-readiness-check` | Skip the Step 0 environment heads-up that names any missing git/gh/remote/registry setup before proceeding. Expert mode — the § Preconditions still enforce the same requirements, but without the friendly up-front summary. Use when you've seen the heads-up before and just want the skill to proceed or refuse at the precondition step. |
 
 ## Preconditions
 
@@ -62,6 +62,41 @@ The skill **refuses** if any of these are not met.
 ## Process
 
 Each step is atomic. Failure at any step leaves the repo in a recoverable state — either on `main` with nothing changed, or on the promote branch with a committed staging snapshot the user can inspect.
+
+0. **Environment readiness heads-up (rc4+).** Before running *any* git or gh command, probe the environment non-invasively and — if the user hasn't hit the promote path before — surface a summary of what's about to happen and what's missing. This step exists because rc4's pre-promote skills are git-free; the promote triad is the first time git / gh / a remote actually need to work, and users deserve a warning before the permission prompts start.
+
+    Checks to run (each is a single read — no mutation):
+    - `git rev-parse --is-inside-work-tree` → is this a git repo?
+    - `git config user.name` / `git config user.email` → set?
+    - `git remote -v` → at least one remote?
+    - `gh --version` → installed on PATH?
+    - `gh auth status` → authenticated for the target remote's host?
+    - `~/.config/project-brain/projects.yaml` → has an entry for the thread's `primary_project` with `remotes` listed?
+
+    If **all** checks pass, skip straight to step 1 — no prompt, the user already has a working setup. Otherwise, print a single heads-up block naming each missing piece AND the exact command the user should run to fix it, and ask for confirmation before continuing. Example:
+
+    ```
+    Heads-up: promoting to a shared tree needs git + gh set up. Here's what I found:
+
+      ✓ this directory is a git repo
+      ✓ gh CLI is installed
+      ✗ git user.email is not set   →  git config --global user.email you@example.com
+      ✗ gh is not authenticated     →  gh auth login
+      ✗ no remote configured        →  git remote add origin git@github.com:you/repo.git
+      ✗ project-brain registry has no `remotes:` entry for 'my-app'
+                                    →  edit ~/.config/project-brain/projects.yaml and
+                                       add a `remotes:` list with at least one entry
+                                       under the `my-app:` key (see CONVENTIONS § 2.2)
+
+    These are one-time setup steps. After you run them, re-invoke promote-thread-to-tree
+    and I'll proceed. No files have been written yet; you can safely stop here.
+
+    Set everything up now? [yes — I'll pause while you run the commands / no — cancel and re-invoke later]
+    ```
+
+    Refuse to proceed if any check is failing, even if the user says "yes" — the follow-on steps need git/gh/remote to be operational. The heads-up is diagnostic, not self-healing: the skill does NOT run any of the suggested fix commands itself. Users run setup themselves; the skill only resumes after a clean re-invocation.
+
+    Skip this step entirely with `--skip-readiness-check` (expert mode — the preconditions in § 2 will still enforce the same requirements but without the friendly summary).
 
 1. **Resolve inputs.** Infer `thread_slug` from cwd if possible. Read `decisions-candidates.md`, present `locking` entries to the user via `AskUserQuestion` for leaf selection. Read `~/.config/project-brain/projects.yaml` and resolve `target_remote`. Prompt for `base_branch` with the resolved remote's `default_base` as the preview value.
 2. **Validate preconditions.** Run checks 1–9 above. On any failure, stop and report the specific precondition.
