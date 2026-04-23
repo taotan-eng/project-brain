@@ -52,28 +52,19 @@ Each step is atomic. Failure at step N leaves the tree in whatever state it was 
 
 1. **Resolve inputs.** Infer `thread_slug` from cwd. Prompt for `discard_reason`.
 2. **Validate preconditions.** Run checks 1–8. If `tree_prs` is non-empty (precondition 4 fails), run `gh pr view` on the most recent entry and report which sibling skill to use. On any other failure, stop and name the precondition.
-3. **Compute timestamp.** Capture the current ISO-8601 timestamp for `archived_at`.
-4. **Flip frontmatter.** In `project-brain/threads/[thread_slug]/thread.md`:
-    - `status: active|parked → archived`.
-    - Remove `maturity` field. Archived threads do not carry a maturity; § 4.1 says "archived has no maturity."
-    - Add `archived_at: <timestamp>` and `archived_by: <--by flag if supplied, else the literal `TODO@example.com` placeholder>`. No shell invocation.
-    - Add `discard_reason: <string>`.
-    - If coming from `parked`: remove `parked_at`, `parked_by`, `parked_reason`, and `unpark_trigger` (if present). These fields are park-only metadata and must not persist into the archived record.
-5. **Move to archive.** Use file-tool to move the entire thread directory from `project-brain/threads/[thread_slug]` to `project-brain/archive/[thread_slug]`. This moves `thread.md`, `decisions-candidates.md`, `open-questions.md`, and any companions.
+3. **Execute one-shot script.** Invoke the discard-thread script in a single Bash call:
 
-6. **Append session transcript** (if `transcript_logging=on` in `<brain>/config.yaml`, default). Append this session's transcript — following the entry schema in CONVENTIONS § 2.5.1 — to `project-brain/archive/[slug]/transcript.md`.
+   ```bash
+   scripts/discard-thread.sh \
+     --brain=<absolute brain path> \
+     --slug=<thread_slug>          \
+     --reason='<discard_reason>'   \
+     [--by=<email>]                  # optional actor email
+   ```
 
-7. **Final step — rebuild indexes**
+   The script handles frontmatter mutation (flip status, remove maturity, add archive metadata), moves the directory from threads/ to archive/, rebuilds indexes, and validates. One permission prompt and ~150ms of execution, replacing the previous 8 individual steps (Read + Frontmatter flip + Timestamp + Remove maturity + Directory move + Transcript append + Index rebuild + Report).
 
-Invoke `verify-tree --rebuild-index` to regenerate `project-brain/thread-index.md` and `project-brain/current-state.md` from the now-updated per-thread frontmatter.
-
-- If the rebuild returns exit 0: proceed; stage both index files along with the archive move.
-- If the rebuild returns exit 1 (source validation failure): abort. Report the thread(s) that failed source validation. Fix before retrying.
-- If the rebuild returns exit 2 (write / verify failure): abort. The live index files are unchanged (atomic write). Report the error.
-
-**Git deferred:** This skill does NOT invoke git. The user runs `git mv` and `git commit` themselves (or uses file-tool equivalents).
-
-8. **Report.** Return the new thread path (`archive/[slug]/`) and a closing note.
+4. **Report.** Passthrough the script's terse output.
 
 ### Dry-run semantics
 

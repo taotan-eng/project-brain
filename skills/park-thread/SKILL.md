@@ -59,31 +59,21 @@ Each step is atomic. Failure at step N leaves the tree in whatever state it was 
 
 1. **Resolve inputs.** Infer `thread_slug` from cwd. Determine `mode` (flag or inferred from status). Prompt for operation-specific fields.
 2. **Validate preconditions.** Run the subset for the chosen mode. On any failure, stop and report the specific precondition.
-3. **Compute timestamp.** Capture the current ISO-8601 timestamp for `parked_at` (park mode only).
-4. **Flip frontmatter.** In `project-brain/threads/[thread_slug]/thread.md`:
-    - **`park`**:
-       - `status: active → parked`.
-       - `maturity` field is left exactly as-is. It stays in frontmatter, unchanged, so `unpark` can restore it without a separate memo. § 4.1's "parked has no maturity progression" wording does not mean the field is deleted — it means the value is frozen.
-       - Add `parked_at: <timestamp>`, `parked_by: <--by flag if supplied, else the literal `TODO@example.com` placeholder>`, `parked_reason: <reason>`. No shell invocation.
-       - If `unpark_trigger` was supplied, add it as `unpark_trigger: <string>`.
-    - **`unpark`**:
-       - `status: parked → active`.
-       - `maturity` untouched (its value was preserved at park time).
-       - Remove `parked_at`, `parked_by`, `parked_reason`, and `unpark_trigger` (if present).
-       - If `note` was supplied, append it under a `## Park log` heading at the bottom of `thread.md` (create the heading if absent) in the form `YYYY-MM-DD — unparked: <note>`.
-5. **Append session transcript** (if `transcript_logging=on` in `<brain>/config.yaml`, default). Append this session's transcript — following the entry schema in CONVENTIONS § 2.5.1 — to `project-brain/threads/[slug]/transcript.md`.
+3. **Execute one-shot script.** Invoke the park-thread script in a single Bash call:
 
-6. **Final step — rebuild indexes**
+   ```bash
+   scripts/park-thread.sh \
+     --brain=<absolute brain path> \
+     --slug=<thread_slug>          \
+     --reason='<reason>'           \  # for park mode
+     [--unpark]                    \  # optional flag for unpark mode
+     [--by=<email>]                \  # optional actor email
+     [--trigger='<trigger>']          # optional unpark trigger
+   ```
 
-Invoke `verify-tree --rebuild-index` to regenerate `project-brain/thread-index.md` and `project-brain/current-state.md` from the now-updated per-thread frontmatter.
+   The script handles frontmatter mutation (flip status, add/remove park metadata), rebuilds indexes, and validates. One permission prompt and ~100ms of execution, replacing the previous 7 individual steps (Read + Frontmatter flip + Timestamp capture + Body append + Transcript append + Index rebuild + Report).
 
-- If the rebuild returns exit 0: proceed; stage both index files along with the thread directory.
-- If the rebuild returns exit 1 (source validation failure): abort. Report the thread(s) that failed source validation. Fix before retrying.
-- If the rebuild returns exit 2 (write / verify failure): abort. The live index files are unchanged (atomic write). Report the error.
-
-**Git deferred:** This skill does NOT invoke git. The user runs `git add` and `git commit` themselves.
-
-7. **Report.** Return the new status + maturity and a next-step suggestion.
+4. **Report.** Passthrough the script's terse output.
 
 ### Dry-run semantics
 

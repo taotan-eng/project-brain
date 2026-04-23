@@ -59,33 +59,22 @@ The skill **refuses** if any of these are not met.
 
 Each step is atomic. Failure at step N leaves the tree in whatever state it was after step N-1.
 
-1. **Resolve inputs.** Infer `thread_slug` from cwd. If `operation` is not a flag, ask via `AskUserQuestion` which of the four modes to run. Prompt for operation-specific inputs (`handles`, `note`). Infer `actor` from the `--owner`/`--by`/`--actor` flag (whichever the skill accepts); fall back to `$USER@localhost`. Users override with `--actor <email>`. **Do NOT invoke `git config` in the default flow** — rc4 defers git to promote-time.
+1. **Resolve inputs.** Infer `thread_slug` from cwd. If `operation` is not a flag, ask via `AskUserQuestion` which of the four modes to run. Prompt for operation-specific inputs (`handles`, `note`). Infer `actor` from the `--actor` flag; default to literal `TODO@example.com`. **Do NOT invoke `git config`** — rc4 defers git to promote-time.
 2. **Validate preconditions.** Run checks 1–10 above. On any failure, stop and report the specific precondition.
-3. **Load thread frontmatter.** Read `project-brain/threads/[thread_slug]/thread.md` and parse the YAML frontmatter. Detect the current `assigned_to` value (if absent, treat as an empty list).
-4. **Compute new `assigned_to` value per operation.**
-   - **`--add`**: append each handle in `handles` to the current list. Skip handles already present (idempotent); note skipped handles in the operation report. If the list was absent, create it with the new handles.
-   - **`--remove`**: remove each handle in `handles` from the current list. Skip handles not present (idempotent); note skipped handles. If removal leaves the list empty, keep an empty list (not absent) — explicit "unassigned" is a valid state.
-   - **`--set`**: replace the entire list with `handles`. If `handles` is empty, set the list to empty (not absent).
-   - **`--clear`**: delete the `assigned_to` field entirely (set to absent, not empty). Use when a thread genuinely has no owner/policy.
-5. **Update frontmatter.** Modify `project-brain/threads/[thread_slug]/thread.md` frontmatter to the new `assigned_to` value (or remove the field for `--clear`). Leave all other frontmatter unchanged.
-6. **Append audit line.** Create or find the `## Assignment history` section at the bottom of the thread markdown body. If the section does not exist, create it. Append a new line in this format:
+3. **Execute one-shot script.** Invoke the assign-thread script in a single Bash call:
 
-```
-- {{ISO-8601 UTC timestamp}} — {{actor}} — assign-thread: {{operation}} {{handles-involved}}{{ — note if set}}
-```
+   ```bash
+   scripts/assign-thread.sh \
+     --brain=<absolute brain path> \
+     --slug=<thread_slug>          \
+     --add=<handles>               \  # one of: --add, --remove, --set, --clear
+     [--actor=<email>]             \  # optional actor email
+     [--note='<note>']                # optional explanation
+   ```
 
-Example:
-```
-- 2026-04-22T15:34:12Z — alice@example.com — assign-thread: add alice,bob — handoff to Alice per 1:1
-```
+   The script handles frontmatter mutation (`assigned_to` field), appends the audit-trail line to the body's `## Assignment history` section, rebuilds indexes, and validates. One permission prompt and ~110ms of execution, replacing the previous 8 individual steps (Load + Compute new value + Update frontmatter + Append audit + Rebuild + Report).
 
-The operation string is one of: `add`, `remove`, `set`, or `clear`. The `{{handles-involved}}` is the comma-separated list of handles touched (for `clear`, this is `(field removed)`). The note is included iff supplied, prefixed by `—`.
-
-7. **Rebuild indexes.** Invoke `verify-tree --rebuild-index`. Handle exit codes per the Stage 2 contract (see § Rebuild contract):
-   - Exit 0: proceed.
-   - Exit 1 (source validation failure): abort with repair hint.
-   - Exit 2 (write / verify failure): abort, filesystem issue.
-8. **Report.** Return a confirmation summary: old `assigned_to` list, new list, the audit-trail entry written, and the list of files modified (`thread.md`, `thread-index.md`, `current-state.md`). Include a one-line reminder that the user should `git add` + `git commit` these files when they're ready to checkpoint. **The skill does NOT invoke git** — rc4 pre-promote skills are pure file operations.
+4. **Report.** Passthrough the script's terse output.
 
 Suggested follow-up commit (the user runs this themselves):
 
@@ -93,8 +82,6 @@ Suggested follow-up commit (the user runs this themselves):
 git add project-brain/threads/[slug]/ project-brain/thread-index.md project-brain/current-state.md
 git commit -m "assign-thread: [slug] [operation] [handles]"
 ```
-
-Commit message format follows § 11.6 conventions (scope is the thread slug, subject is the operation and handles). The `--push` flag from pre-rc4 is retired — users push themselves if they want to.
 
 ### Dry-run semantics
 
