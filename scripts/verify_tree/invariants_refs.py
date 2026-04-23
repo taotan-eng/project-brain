@@ -1,4 +1,4 @@
-"""Reference invariants: V-03, V-14, V-15, V-16, V-17, V-18, V-20.
+"""Reference invariants: V-03, V-14, V-15, V-16, V-17, V-18, V-20, V-22.
 
 V-03: soft_links resolve to existing files (or valid alias targets).
 V-14: source_thread points to a real thread.
@@ -7,6 +7,7 @@ V-16: soft_link doesn't point at self.
 V-17: promoted_to entries are unique.
 V-18: promoted_at timestamps are monotonic.
 V-20: source_debate resolves to a round-NN directory.
+V-22: artifact's `source_thread` matches its parent thread dir on disk.
 """
 
 from __future__ import annotations
@@ -233,4 +234,40 @@ class RefsInvariantsMixin:
                 "V-20",
                 a,
                 f"source_debate={src!r} does not resolve to a round-NN directory.",
+            )
+
+    def check_v22_artifact_source_thread(self, a: Artifact) -> None:
+        """Artifact's frontmatter source_thread must match its parent thread dir.
+
+        Artifacts live at ``threads/<slug>/artifacts/<file>.md`` (or the
+        archived equivalent). The parent thread's slug is ``parts[1]``.
+        ``source_thread`` must equal that slug; otherwise the artifact is
+        orphaned from the thread it claims to belong to. We also verify the
+        referenced thread exists (V-14 covers similar ground for leaves; V-22
+        is the artifact-scoped analogue).
+        """
+        parts = a.rel_path.split("/")
+        if len(parts) < 4 or parts[0] not in ("threads", "archive") \
+                or parts[2] != "artifacts":
+            # Shouldn't happen given the classifier, but be defensive.
+            return
+        dir_slug = parts[1]
+        fm_slug = a.frontmatter.get("source_thread")
+        if not isinstance(fm_slug, str) or not fm_slug:
+            # V-06 already flagged the missing field; don't double-report.
+            return
+        if fm_slug != dir_slug:
+            self.add(
+                "V-22",
+                a,
+                f"artifact source_thread={fm_slug!r} does not match parent "
+                f"thread dir {dir_slug!r}.",
+            )
+            return
+        if self._find_thread(fm_slug) is None:
+            self.add(
+                "V-22",
+                a,
+                f"artifact source_thread={fm_slug!r} does not resolve to "
+                f"any thread in threads/ or archive/.",
             )

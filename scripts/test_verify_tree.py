@@ -920,6 +920,95 @@ class V2AdditionsTests(BaseTest):
         self.assertEqual(code, 1)
 
 
+class ArtifactTests(BaseTest):
+    """`kind: artifact` under threads/<slug>/artifacts/ must be validated
+    (V-01/V-06/V-22 apply) unlike transcript/attachments which are exempt."""
+
+    def _write_artifact(self, brain, slug, filename, *, title="The Artifact",
+                        source_thread=None, artifact_kind="debate",
+                        missing_field=None, body="body."):
+        source_thread = source_thread if source_thread is not None else slug
+        art_dir = brain / "threads" / slug / "artifacts"
+        art_dir.mkdir(parents=True, exist_ok=True)
+        p = art_dir / filename
+        lines = [
+            "---",
+            f"id: 2026-04-23/{slug}/artifact-0001",
+            f"title: {title}",
+            "kind: artifact",
+            "created_at: 2026-04-23T12:00:00Z",
+            f"source_thread: {source_thread}",
+            f"artifact_kind: {artifact_kind}",
+        ]
+        # Allow a test to drop a required field.
+        if missing_field:
+            lines = [L for L in lines if not L.startswith(f"{missing_field}:")]
+        lines += ["soft_links: []", "---", "", f"# {title}", "", body, ""]
+        p.write_text("\n".join(lines))
+        return p
+
+    def test_valid_artifact_passes(self):
+        brain = make_brain(self.tmp_path)
+        make_thread(brain, "alpha")
+        self._write_artifact(brain, "alpha", "0001-the-artifact.md")
+        code, data, *_ = run_validator(brain)
+        self.assertEqual(code, 0, data.get("errors"))
+
+    def test_v22_wrong_source_thread_fires(self):
+        """source_thread='beta' but the artifact sits under threads/alpha/ →
+        V-22 fires with 'does not match parent thread dir'."""
+        brain = make_brain(self.tmp_path)
+        make_thread(brain, "alpha")
+        make_thread(brain, "beta")
+        self._write_artifact(
+            brain, "alpha", "0001-wrong-owner.md", source_thread="beta",
+        )
+        code, data, *_ = run_validator(brain)
+        codes = [v["code"] for v in data["errors"]]
+        self.assertIn("V-22", codes)
+        self.assertEqual(code, 1)
+
+    def test_v22_unresolvable_source_thread_fires(self):
+        """source_thread='alpha' matches the dir but no thread 'alpha' exists
+        anywhere → V-22 should also fire (the dir-match branch is satisfied,
+        but the resolve-to-real-thread branch trips)."""
+        brain = make_brain(self.tmp_path)
+        # Only create the artifact, not the thread. The artifact's parent
+        # dir still has the slug 'orphan' so the dir-match passes, but
+        # _find_thread returns None → V-22 fires.
+        (brain / "threads" / "orphan" / "artifacts").mkdir(parents=True)
+        # Give the thread dir a stub thread.md so it's not classified as
+        # completely absent at the walker level — we want to isolate the
+        # "source_thread slug resolves" check.
+        # Actually: easier to write a thread whose frontmatter `id` differs
+        # from the dir slug. But simpler still is the fully-orphaned case:
+        # delete the thread.md after make_thread writes it so _find_thread
+        # returns None but the artifact's parent dir is still 'orphan'.
+        make_thread(brain, "orphan")
+        (brain / "threads" / "orphan" / "thread.md").unlink()
+        self._write_artifact(
+            brain, "orphan", "0001-foo.md", source_thread="orphan",
+        )
+        code, data, *_ = run_validator(brain)
+        codes = [v["code"] for v in data["errors"]]
+        # Either V-22 (does not resolve) or V-14 adjacent would fire;
+        # we want V-22 specifically.
+        self.assertIn("V-22", codes)
+
+    def test_artifact_missing_source_thread_is_v06_not_v22(self):
+        """If source_thread is absent entirely, V-06 fires (required field)
+        and V-22 is suppressed — we don't want double-reporting."""
+        brain = make_brain(self.tmp_path)
+        make_thread(brain, "alpha")
+        self._write_artifact(
+            brain, "alpha", "0001-no-source.md", missing_field="source_thread",
+        )
+        code, data, *_ = run_validator(brain)
+        codes = [v["code"] for v in data["errors"]]
+        self.assertIn("V-06", codes)
+        self.assertNotIn("V-22", codes)
+
+
 class HostProjectRootTests(BaseTest):
     """detect_host_project_root() priority: PROJECT_BRAIN_HOME →
     COWORK_WORKSPACE_FOLDER → CODEX_PROJECT_ROOT → CLAUDE_PROJECT_ROOT →

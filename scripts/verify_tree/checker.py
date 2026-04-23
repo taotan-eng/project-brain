@@ -85,6 +85,8 @@ class Checker(
             if a.kind == "node":
                 self.check_v04_v05_node_leaves(a)
                 self.check_v10_node_status(a)
+            if a.kind == "artifact":
+                self.check_v22_artifact_source_thread(a)
             # soft_links applies to every artifact with a frontmatter
             self.check_v03_soft_links(a)
             self.check_v16_soft_link_self(a)

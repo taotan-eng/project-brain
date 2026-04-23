@@ -60,6 +60,7 @@ RESERVED_DIRS = {
     "tryouts",
     "diagrams",
     "attachments",
+    "artifacts",           # per-thread structured products (record-artifact, v1.0.0-rc4+)
 }
 
 # Valid states per CONVENTIONS § 4
@@ -154,6 +155,12 @@ REQUIRED_BY_KIND = {
     # thread or leaf), no status (implicit from parent's maturity).
     "debate-index": ["id", "kind", "created_at"],
     "debate-synthesized": ["id", "kind", "created_at"],
+    # Per-thread artifacts (record-artifact, v1.0.0-rc4+) — structured
+    # products that live under threads/<slug>/artifacts/. Always carry
+    # frontmatter and V-01/V-06 apply. source_thread must match the parent
+    # thread slug (V-22). `artifact_kind` is a free-form label ("debate",
+    # "analysis", "benchmark", etc.) — NOT required by V-06, but encouraged.
+    "artifact": ["id", "title", "kind", "created_at", "source_thread"],
 }
 
 # Artifact kinds that are NOT expected to carry YAML frontmatter.

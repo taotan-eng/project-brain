@@ -52,13 +52,22 @@ def classify(rel_path: str, frontmatter: dict) -> str:
     if name == "current-state.md":
         return "snapshot"
 
-    # Per-thread transcript + attachments (v1.0.0-rc4).
-    # Anything under <thread-dir>/attachments/ is arbitrary evidence with
-    # no frontmatter contract. transcript.md is an append-only human-LLM log.
+    # Per-thread transcript + attachments + artifacts (v1.0.0-rc4).
+    # - attachments/*    : raw/binary evidence, no frontmatter contract.
+    # - transcript.md    : append-only human-LLM log.
+    # - artifacts/*.md   : structured products (record-artifact); frontmatter
+    #                      IS required (kind="artifact"). Non-md files under
+    #                      artifacts/ (should be rare — prefer attachments/)
+    #                      are treated as unknown and exempt from V-06.
     if "attachments" in parts:
         return "attachment"
     if name == "transcript.md":
         return "transcript"
+    # Artifacts live under threads/<slug>/artifacts/. Match on the segment,
+    # not position, so archived artifacts (archive/<slug>/artifacts/) are
+    # classified identically.
+    if "artifacts" in parts and name.endswith(".md"):
+        return "artifact"
 
     # Per F9: debate/ subtrees have a distinct kind vocabulary.
     # Synthesized outputs (index.md above round-NN/, proposed-patches.md +

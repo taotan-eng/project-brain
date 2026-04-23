@@ -39,7 +39,8 @@ A project using these conventions has a `project-brain/` folder at its root. Thi
       <slug>/                   # one directory per thread
         thread.md               # frontmatter + freeform notes
         transcript.md           # optional: append-only human-LLM log (§ 2.5)
-        attachments/            # optional: intermediates (screenshots, scratch md, etc.)
+        artifacts/              # optional: structured markdown products with frontmatter (§ 2.5.2)
+        attachments/            # optional: raw/binary evidence (PDFs, CSVs, screenshots) — no frontmatter contract
         decisions-candidates.md
         open-questions.md
         proposal.md             # optional
@@ -50,7 +51,11 @@ A project using these conventions has a `project-brain/` folder at its root. Thi
 
 The `project-brain/` folder is tracked in git and reviewable via PR. Nothing below `project-brain/` should be machine-generated without also being checked in — the tree is authoritative, not derived.
 
-Exception: `transcript.md` and `attachments/` inside a thread directory are append-only evidence, not curated content. They are excluded from frontmatter validation (§ 9, `KINDS_WITHOUT_FRONTMATTER`) and gitignored by default (see § 2.5); commit them only if you want that evidence in PR history.
+Exceptions inside a thread directory, graded by how much structure the validator enforces:
+
+- `transcript.md` is an append-only human-LLM conversation log. No frontmatter contract (`kind=transcript` is in `KINDS_WITHOUT_FRONTMATTER`). Gitignored by default; commit it if you want the conversation in PR history.
+- `attachments/` holds raw/binary evidence (PDFs, CSVs, screenshots, scratch scripts) — no frontmatter, no file-structure rules. Gitignored by default.
+- `artifacts/` holds structured markdown products written by `record-artifact` (§ 2.5.2) — debate rationales, analyses, benchmarks. Each is a `.md` file with required frontmatter (`id`, `title`, `kind: artifact`, `created_at`, `source_thread`). V-01/V-06 apply, plus V-22 (source_thread must match the parent thread dir). These ARE committed with the thread — they're product evidence, not scratch work.
 
 ### 1.1 Host-environment binding (1:1, new in v1.0.0-rc4)
 
@@ -254,6 +259,21 @@ Attachments:
 - Summarize or paraphrase user input — content is verbatim.
 - Write transcripts when `transcript_logging: off` or the thread's frontmatter has `transcript: off`.
 
+### 2.5.2 Artifacts — structured thread products
+
+`record-artifact` captures intermediate outputs — debate rationales, analyses, benchmarks, sketches, reference files — into a thread without requiring the user to decide layout. The skill routes inputs by file kind:
+
+- **Markdown inputs** (the common case: debate writeups, analyses, rationales) land in `<thread>/artifacts/NNNN-<title-slug>.md`. Frontmatter is injected from `assets/artifact-template.md`. `kind: artifact` is a first-class classifier kind; V-01 (title/H1 parity), V-06 (required fields: `id`, `title`, `kind`, `created_at`, `source_thread`), and the new V-22 (artifact `source_thread` matches parent thread dir on disk) all apply. `artifact_kind` is a free-form label in frontmatter (common values: `debate`, `analysis`, `benchmark`, `sketch`, `reference`, `other`) used for grouping in `review-thread` output.
+- **Non-markdown inputs** (PDFs, CSVs, PNGs, raw logs) land in `<thread>/attachments/` unchanged. No frontmatter contract — `kind: attachment` is in `KINDS_WITHOUT_FRONTMATTER`. Filenames that look like tempfiles are renamed using the artifact title slug so listings stay readable.
+
+Artifacts and attachments live side-by-side under the thread. The distinction is structural, not semantic: anything a human would want to annotate, diff, or reference by path belongs in `artifacts/`; raw opaque blobs belong in `attachments/`.
+
+**Transcript breadcrumb.** Every `record-artifact` invocation — default mode or `--append` — writes an entry to `transcript.md`. Default mode writes a breadcrumb pointing at the created file(s); `--append` mode writes the content itself into the transcript under an H2 block. This means the transcript always reflects the full chronological flow, even when the products are separate files.
+
+**Numbering.** `NNNN-` sequential prefix. The script scans `artifacts/[0-9][0-9][0-9][0-9]-*.md` to find the next free number. Sequential beats timestamped for UX (easier to say "see artifact 3") and collisions within the same millisecond are rare in human-speed workflows.
+
+**Promotion.** Artifacts stay under the thread after `promote-thread-to-tree` by default — they're thread-scoped history. Leaves can soft_link back to specific artifacts using `threads/<slug>/artifacts/NNNN-<slug>.md`. Future: `promote-thread-to-tree --promote-artifact=<path>` will optionally carry selected artifacts into `tree/<domain>/<leaf>/artifacts/`.
+
 ### .gitignore defaults
 
 `init-project-brain` writes a `.gitignore` next to the brain with the following entries by default:
@@ -266,7 +286,7 @@ project-brain/archive/*/transcript.md
 project-brain/archive/*/attachments/
 ```
 
-Rationale: transcripts and attachments are reproducible evidence, not curated artifacts. The durable record is `thread.md`. Users who want PR-reviewable transcripts delete the relevant lines.
+Rationale: transcripts and attachments are reproducible evidence, not curated artifacts. The durable record is `thread.md` plus `artifacts/` (which ARE committed — they're structured products, not scratch work). Users who want PR-reviewable transcripts delete the relevant lines.
 
 ---
 
@@ -558,7 +578,7 @@ Once `derive-impl-spec` runs, the leaf frontmatter gets `impl_spec: impl-spec.md
 
 ## 9. Invariants the validator enforces
 
-`verify-tree` treats the following as errors. Identifiers **V-01 … V-21** match the detailed detection rules in `skills/verify-tree/SKILL.md`; the authoritative semantics live there, this section is the summary.
+`verify-tree` treats the following as errors. Identifiers **V-01 … V-22** match the detailed detection rules in `skills/verify-tree/SKILL.md`; the authoritative semantics live there, this section is the summary.
 
 | ID    | Scope                | Summary                                                                                                                                          |
 |-------|----------------------|--------------------------------------------------------------------------------------------------------------------------------------------------|
@@ -583,6 +603,7 @@ Once `derive-impl-spec` runs, the leaf frontmatter gets `impl_spec: impl-spec.md
 | V-19  | thread + leaf        | `debate/round-NN/` directories form a gap-free zero-padded sequence starting at `round-01`.                                                       |
 | V-20  | leaf (conditional)   | When a leaf's `source_debate` is set, the path resolves to an existing `debate/round-NN/` directory.                                              |
 | V-21  | any artifact         | Filenames under `project-brain/` match `^[a-zA-Z0-9_-]+(\.[a-zA-Z0-9_-]+)?$` (with exceptions for fixed names like `NODE.md`, `CONVENTIONS.md`, `README.md`, `thread.md`, `index.md`). |
+| V-22  | artifact             | Artifact's frontmatter `source_thread` matches the parent thread slug on disk AND resolves to an existing thread in `threads/` or `archive/`. (See § 2.5.2.)                     |
 
 The validator **does not** enforce the project-specific domain taxonomy in § 10.1 — projects can add their own checks by dropping a Python file into `scripts/verify-tree.d/` (see `skills/verify-tree/SKILL.md` § Extensions for the `check(brain, artifacts, violations)` contract).
 
