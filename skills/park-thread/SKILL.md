@@ -51,7 +51,7 @@ The skill **refuses** if any of these are not met.
    - `parked_at`, `parked_by`, `parked_reason` are present in frontmatter (any missing means the thread was hand-edited into a bad state; refuse and route to manual fix or `verify-tree`).
    - The preserved `maturity` value is one of `exploring | refining | locking`.
 5. Working tree has no uncommitted changes to `project-brain/thread-index.md`, `project-brain/current-state.md`, or the thread's `thread.md`.
-6. `parked_by` is resolvable. Read from `$EMAIL` env var; fall back to `$USER@localhost`. **No `git` binary is invoked.** Users can override with an explicit `--by <email>` flag.
+6. `parked_by` is resolvable. If `--by <email>` is supplied, use it. Otherwise write the literal placeholder `TODO@example.com` into the `parked_by` frontmatter field and append a TODO note to the thread body reminding the user to fix it. **No `git` invocation and no env-var read** — rc4 keeps park-thread shell-free. Precondition always succeeds (placeholder is always available); it never refuses.
 
 ## Process
 
@@ -64,7 +64,7 @@ Each step is atomic. Failure at step N leaves the tree in whatever state it was 
     - **`park`**:
        - `status: active → parked`.
        - `maturity` field is left exactly as-is. It stays in frontmatter, unchanged, so `unpark` can restore it without a separate memo. § 4.1's "parked has no maturity progression" wording does not mean the field is deleted — it means the value is frozen.
-       - Add `parked_at: <timestamp>`, `parked_by: <$EMAIL or $USER@localhost>`, `parked_reason: <reason>`.
+       - Add `parked_at: <timestamp>`, `parked_by: <--by flag if supplied, else the literal `TODO@example.com` placeholder>`, `parked_reason: <reason>`. No shell invocation.
        - If `unpark_trigger` was supplied, add it as `unpark_trigger: <string>`.
     - **`unpark`**:
        - `status: parked → active`.
@@ -187,7 +187,7 @@ When `--dry-run` is set: no files are written; the frontmatter changes and any b
 | `unpark` on non-`parked` thread                      | Mode mismatch                                                               | refuse — report current status                                         |
 | Missing park metadata on `unpark`                    | Hand-edited thread; frontmatter broken                                      | refuse — suggest `verify-tree` and manual repair                       |
 | Empty `reason` on `park`                             | Slipped past prompt                                                         | re-prompt — reason is not optional                                     |
-| `$EMAIL` empty and no `--by` flag                        | Git not configured                                                          | refuse — ask user to configure git                                     |
+| (retired in rc4 — `parked_by` defaults to `TODO@example.com` when `--by` not supplied)                        | Git not configured                                                          | refuse — ask user to configure git                                     |
 | Uncommitted edits to unrelated paths                 | Conflict risk                                                               | refuse — ask user to stash or commit                                   |
 | Rebuild source-validation failure                    | Thread frontmatter schema violations                                        | refuse — report violating thread; user must repair before retrying     |
 | Rebuild write failure                                | Filesystem / permissions issue                                             | refuse — live index files unchanged (atomic); report error             |

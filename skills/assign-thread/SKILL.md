@@ -32,11 +32,11 @@ Every assignment change is recorded in an audit trail appended to the thread bod
 | `operation`       | flag (`--add`, `--remove`, `--set`, `--clear`) | yes | Exactly one of the four mutation modes. Mutually exclusive.              |
 | `handles`         | user prompt (comma-separated)   | cond.    | List of handles to add/remove/set. Required for `--add`, `--remove`, `--set`; forbidden for `--clear`. |
 | `note`            | user prompt                     | no       | Optional free-form note explaining the assignment change (e.g., "handoff to Alice per 1:1").    |
-| `actor`           | `--actor <email>` flag or `$EMAIL` env var | no       | Override for "who performed this action" in the audit line. Resolution: `--actor` flag → `$EMAIL` → `$USER@localhost`. **No `git config` invocation** (rc4 pre-promote skills are git-free). |
+| `actor`           | `--actor <email>` flag or `$EMAIL` env var | no       | Override for "who performed this action" in the audit line. Resolution: `--actor` flag → literal `TODO@example.com` placeholder. **No `git config` invocation** (rc4 pre-promote skills are git-free). |
 | `push`            | flag (`--push`)                 | no       | Push to the default remote after commit. Default off.                                           |
 | `--brain=<path>`  | user prompt or cwd inference    | no       | Absolute path to the brain root. Defaults to the nearest ancestor `project-brain/` directory.        |
 
-Prompt strategy: resolve `thread_slug` from cwd. Ask which operation via `AskUserQuestion` if not supplied as a flag. For each operation, prompt for the handles (none for `--clear`). Optionally prompt for a note. Infer the actor from `$EMAIL` env var (fall back to `$USER@localhost`). **Do NOT invoke `git config`** — rc4 keeps pre-promote skills git-free.
+Prompt strategy: resolve `thread_slug` from cwd. Ask which operation via `AskUserQuestion` if not supplied as a flag. For each operation, prompt for the handles (none for `--clear`). Optionally prompt for a note. Infer `actor` from `--actor <email>` if supplied; otherwise use the literal placeholder `TODO@example.com`. **Do NOT invoke `git config`** — rc4 keeps pre-promote skills git-free.
 
 | `--dry-run`       | boolean                         | no       | Print the plan (operation, assigned_to changes, audit trail, commit message) without performing any file writes, git mutations, or audit-log writes. See Process § Dry-run semantics. |
 
@@ -53,13 +53,13 @@ The skill **refuses** if any of these are not met.
 7. For `--clear`: no `handles` parameter is given.
 8. *(rc4: this precondition is deferred.)* Pre-rc4 this skill refused when the thread had uncommitted changes, to prevent mixing an in-flight edit into the assignment audit line. rc4 makes the skill pure-file — it only appends to the body's `## Assignment history` section — so uncommitted thread edits are harmless. **No `git status` invocation.** The user commits whenever they want.
 9. Standard path-traversal guard: `thread_slug` contains only `[a-z0-9-]`, matches the slug in `project-brain/threads/`, and the resolved path is canonical (no `..` escapes).
-10. `actor` is resolvable. Read from `$EMAIL` env var; fall back to `$USER@localhost`. **No `git` binary is invoked.** Users can override with `--actor <email>`.
+10. `actor` is resolvable. If `--actor <email>` is supplied, use it. Otherwise write the literal placeholder `TODO@example.com` into the audit line and append a TODO note to the thread body reminding the user to fix it. **No `git` invocation and no env-var read** — rc4 keeps assign-thread shell-free. Precondition always succeeds; never refuses.
 
 ## Process
 
 Each step is atomic. Failure at step N leaves the tree in whatever state it was after step N-1.
 
-1. **Resolve inputs.** Infer `thread_slug` from cwd. If `operation` is not a flag, ask via `AskUserQuestion` which of the four modes to run. Prompt for operation-specific inputs (`handles`, `note`). Infer `actor` from `$EMAIL` env var; fall back to `$USER@localhost`. Users override with `--actor <email>`. **Do NOT invoke `git config` in the default flow** — rc4 defers git to promote-time.
+1. **Resolve inputs.** Infer `thread_slug` from cwd. If `operation` is not a flag, ask via `AskUserQuestion` which of the four modes to run. Prompt for operation-specific inputs (`handles`, `note`). Infer `actor` from the `--owner`/`--by`/`--actor` flag (whichever the skill accepts); fall back to `$USER@localhost`. Users override with `--actor <email>`. **Do NOT invoke `git config` in the default flow** — rc4 defers git to promote-time.
 2. **Validate preconditions.** Run checks 1–10 above. On any failure, stop and report the specific precondition.
 3. **Load thread frontmatter.** Read `project-brain/threads/[thread_slug]/thread.md` and parse the YAML frontmatter. Detect the current `assigned_to` value (if absent, treat as an empty list).
 4. **Compute new `assigned_to` value per operation.**
@@ -183,7 +183,7 @@ No other fields are touched. `status`, `maturity`, `parked_*`, `archived_*` are 
 | `--clear` with non-empty `handles`             | Conflicting args                                                              | refuse — `--clear` takes no handles                                    |
 | Empty `handles` for `--add`, `--remove`, `--set` | Invalid input                                                                | refuse — ask for a non-empty handle list                               |
 | Uncommitted edits to thread.md                 | Concurrent edit risk                                                          | refuse — ask user to commit or stash                                   |
-| `$EMAIL` empty (no `--actor`)                  | No email configured                                                            | refuse — ask user to configure git or supply `--actor`                 |
+| (retired in rc4 — `actor` defaults to `TODO@example.com` when `--actor` not supplied; user fixes later)           | — | (never refuse — ask user to configure git or supply `--actor`                 |
 | Rebuild source-validation failure              | Thread frontmatter schema violations                                          | refuse — report violating thread; user must repair before retrying     |
 | Rebuild write failure                          | Filesystem / permissions issue                                               | refuse — live index files unchanged (atomic); report error             |
 | Path traversal attempt in `thread_slug`        | Malicious or malformed slug (e.g., `../../../etc/passwd`)                    | refuse — reject slug, report invalid characters                        |

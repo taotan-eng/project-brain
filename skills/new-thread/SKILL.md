@@ -29,14 +29,14 @@ The skill is deliberately minimal. It does not pre-create optional artifacts (`p
 | `slug`               | user prompt                         | yes      | Kebab-case identifier per CONVENTIONS.md § 11.1. Short-and-memorable.                 |
 | `title`              | user prompt                         | yes      | Human-readable title; matches the H1 in `thread.md`.                                  |
 | `purpose`            | user prompt                         | yes      | One-line "what this thread is about." Goes into the `thread-index.md` row.            |
-| `owner`              | `$EMAIL` env var (default) or `--owner <email>` flag | yes      | Email or github handle. `$USER@localhost` fallback if $EMAIL unset.                                                               |
+| `owner`              | `--owner <email>` flag, else the placeholder `TODO@example.com` with a TODO marker in the thread body | yes      | Email or github handle. No env-var read in default flow — "setup/capture/refine → Done" runs without any shell call.                                                               |
 | `primary_project`    | user prompt (constrained by aliases)| yes      | Key from `<brain>/config.yaml` aliases block. If only one alias exists, default to it. |
 | `tree_domain`        | user prompt                         | no       | Guess at where this thread will eventually promote. Nullable.                         |
 | `related_projects`   | user prompt                         | no       | Other project aliases this thread touches. Default `[]`.                              |
 | `--brain=<path>`     | user prompt or cwd inference        | no       | Absolute path to the brain root. Defaults to the nearest ancestor `project-brain/` directory containing `CONVENTIONS.md`. Use this flag when cwd is outside the brain. |
 | `--dry-run`          | boolean                             | no       | Print the plan (new frontmatter, files to create, commit message) without performing any file writes, git mutations, or audit-log writes. See Process § Dry-run semantics. |
 
-Prompt strategy: ask for `slug` + `title` + `purpose` in one `AskUserQuestion` call with preview-equivalent text. Resolve `owner` automatically from the `$EMAIL` environment variable if set; fall back to `$USER@localhost` otherwise. **Do NOT invoke `git config user.email`** — rc4 keeps pre-promote skills git-free. Ask for `primary_project` separately (with options from `<brain>/config.yaml` aliases). `tree_domain` and `related_projects` are asked only if the user volunteers or the previous conversation makes them obvious.
+Prompt strategy: ask for `slug` + `title` + `purpose` in one `AskUserQuestion` call with preview-equivalent text. Resolve `owner` from `--owner <email>` if supplied; otherwise write the literal placeholder `TODO@example.com` and append a TODO marker to the thread body reminding the user to replace it. **Do NOT run `git config user.email`, do NOT read `$EMAIL`, do NOT run any shell command** — every shell call triggers a permission prompt in agentic IDEs, and rc4's pre-promote flow is "capture → refine → Done, no prompts". Ask for `primary_project` separately (with options from `<brain>/config.yaml` aliases). `tree_domain` and `related_projects` are asked only if the user volunteers or the previous conversation makes them obvious.
 
 ## Preconditions
 
@@ -46,13 +46,13 @@ The skill **refuses** if any of these are not met. It does not silently fix.
 2. `<brain>/config.yaml` exists and contains at least one alias, or the user provides `primary_project` explicitly. See CONVENTIONS § 2.
 3. The resolved `primary_project` alias has a `brain:` path that matches the current brain root.
 4. `project-brain/threads/<slug>/` does not already exist. If it does, skill offers `<slug>-2`, `<slug>-3`, … and asks the user to confirm.
-5. `owner` is resolvable. Read from `$EMAIL` env var; fall back to `$USER@localhost` (with a TODO marker in the thread body's metadata so the user spots it). Users can always pass `--owner <email>` explicitly. **No `git` binary is invoked** — rc4 defers git to promote-time.
+5. `owner` is resolvable. If `--owner <email>` (or the skill-specific equivalent flag) is supplied, use it; otherwise write the literal placeholder `TODO@example.com` with a TODO marker in the thread body. Users can always pass `--owner <email>` explicitly. **No `git` binary is invoked** — rc4 defers git to promote-time.
 
 ## Process
 
 Each step is atomic. If a step fails, the skill stops and reports — no partial scaffolding is left behind.
 
-1. **Resolve inputs.** Ask the user via `AskUserQuestion` for any missing required input. Resolve `owner` from `$EMAIL` env var if not supplied, else `$USER@localhost` with a TODO marker. Do NOT invoke `git config user.email` — that triggers a permission prompt in agentic IDEs, and rc4 keeps pre-promote skills git-free.
+1. **Resolve inputs.** Ask the user via `AskUserQuestion` for any missing required input. Resolve `owner` from `--owner <email>` if supplied; otherwise use the literal placeholder `TODO@example.com` and append a TODO marker to the thread body. Do NOT invoke `git config user.email` — that triggers a permission prompt in agentic IDEs, and rc4 keeps pre-promote skills git-free.
 2. **Validate slug.** Check kebab-case rules (§ 11.1); if malformed, re-prompt. Check for collision; if found, suggest `-2`/`-3` suffix.
 3. **Compute `created_at`.** Capture the current ISO-8601 timestamp.
 4. **Create directory.** Use file-tool to create `project-brain/threads/<slug>/`.
@@ -167,7 +167,7 @@ When `--dry-run` is set: no files are written; the frontmatter substitutions are
 | Slug collision                         | `project-brain/threads/<slug>/` already exists                   | prompt — suggest `<slug>-2`, `<slug>-3` |
 | Invalid slug characters                | Fails § 11.1 regex                                          | prompt — re-ask for slug        |
 | Dirty working tree on index files      | Uncommitted edits to unrelated paths (not thread-local)     | refuse — ask user to stash or commit |
-| `$EMAIL` empty and no `--owner` given              | No email configured                               | prompt — ask for owner          |
+| (no failure — `owner` defaults to `TODO@example.com` placeholder when `--owner` not supplied; user fixes later) | — | (this failure mode is retired in rc4) |
 | Template file missing from pack        | Pack installation broken                                    | refuse — report broken pack     |
 | Rebuild source-validation failure      | Thread frontmatter schema violations                        | refuse — report violating thread; user must repair before retrying |
 | Rebuild write failure                  | Filesystem / permissions issue                             | refuse — live index files unchanged (atomic); report error |

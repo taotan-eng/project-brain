@@ -177,3 +177,94 @@ def get_transcript_policy(brain: Path) -> str:
         if v in VALID_TRANSCRIPT:
             return v
     return "on"
+
+
+# ---------------------------------------------------------------------------
+# Host-environment project-root detection (v1.0.0-rc4)
+# ---------------------------------------------------------------------------
+#
+# CONVENTIONS § 1 commits to a 1:1 correspondence between a project-brain
+# project and the host environment's project concept — Cowork's workspace
+# folder, Codex's project root, Claude Code's cwd. "Switching projects" is
+# a host-level operation. Project-brain follows; it does not track its own
+# active-project state.
+#
+# ``detect_host_project_root()`` surfaces the host's project root to
+# scripts and tooling that need it (`init-project-brain`, `verify-tree
+# --print-config` planned for rc5, CI smoke tests, etc.).
+#
+# Priority order for detection:
+#   1. Explicit env override: ``PROJECT_BRAIN_HOME``.
+#   2. Cowork-supplied workspace folder (``COWORK_WORKSPACE_FOLDER``).
+#   3. Codex project root (``CODEX_PROJECT_ROOT``).
+#   4. Claude Code project root (``CLAUDE_PROJECT_ROOT``).
+#   5. First ancestor of ``start_cwd`` that contains a ``.git`` directory.
+#   6. ``start_cwd`` itself.
+#
+# All probing is pure Python — env var reads plus file-existence checks via
+# ``Path.is_dir``. Never invokes a shell, so it's safe to call from any
+# runtime without triggering agent permission prompts.
+
+
+# Env-var names consulted in priority order, each paired with a short
+# source-label returned to the caller so they can print why a particular
+# root was chosen.
+_HOST_ENV_PROBES = (
+    ("PROJECT_BRAIN_HOME",      "env:PROJECT_BRAIN_HOME"),
+    ("COWORK_WORKSPACE_FOLDER", "cowork-workspace"),
+    ("CODEX_PROJECT_ROOT",      "codex-project"),
+    ("CLAUDE_PROJECT_ROOT",     "claude-project"),
+)
+
+
+def _walk_for_git_root(start: Path) -> Optional[Path]:
+    """Walk ``start`` upward and return the first ancestor containing
+    a ``.git`` directory (regular checkout) or a ``.git`` file (git
+    worktree / submodule). Returns None if none found up to filesystem
+    root.
+    """
+    current = start.resolve()
+    # Guard against infinite loops on malformed symlinks by bounding the
+    # walk at 40 levels — far deeper than any realistic filesystem.
+    for _ in range(40):
+        if (current / ".git").exists():
+            return current
+        if current.parent == current:
+            return None
+        current = current.parent
+    return None
+
+
+def detect_host_project_root(
+    start_cwd: Optional[Path] = None,
+) -> tuple[Path, str]:
+    """Resolve the host-environment project root + a source label.
+
+    Args:
+        start_cwd: directory to start detection from. Defaults to ``Path.cwd()``
+            at call time — pass explicitly from scripts/CI to keep behaviour
+            deterministic under test.
+
+    Returns:
+        ``(path, source)`` tuple. ``source`` is one of:
+        ``env:PROJECT_BRAIN_HOME`` | ``cowork-workspace`` |
+        ``codex-project`` | ``claude-project`` | ``git-root`` | ``cwd``.
+        ``path`` is always a resolved absolute Path — guaranteed usable
+        by callers (even the ``cwd`` fallback).
+    """
+    if start_cwd is None:
+        start_cwd = Path.cwd()
+
+    # 1-4: env-var probes
+    for env_name, label in _HOST_ENV_PROBES:
+        value = os.environ.get(env_name)
+        if value:
+            return Path(value).expanduser().resolve(), label
+
+    # 5: walk for .git
+    git_root = _walk_for_git_root(start_cwd)
+    if git_root is not None:
+        return git_root, "git-root"
+
+    # 6: cwd fallback
+    return start_cwd.resolve(), "cwd"

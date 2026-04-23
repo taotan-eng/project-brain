@@ -920,5 +920,93 @@ class V2AdditionsTests(BaseTest):
         self.assertEqual(code, 1)
 
 
+class HostProjectRootTests(BaseTest):
+    """detect_host_project_root() priority: PROJECT_BRAIN_HOME →
+    COWORK_WORKSPACE_FOLDER → CODEX_PROJECT_ROOT → CLAUDE_PROJECT_ROOT →
+    walk for .git → cwd fallback. Pure Python; no shell invocation."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        # Scrub env so each test starts from a clean slate.
+        for var in (
+            "PROJECT_BRAIN_HOME", "COWORK_WORKSPACE_FOLDER",
+            "CODEX_PROJECT_ROOT", "CLAUDE_PROJECT_ROOT",
+        ):
+            os.environ.pop(var, None)
+
+    def _detect(self, cwd: Path):
+        # Import lazily so tests that don't need this helper aren't penalised.
+        from verify_tree.config import detect_host_project_root
+        return detect_host_project_root(cwd)
+
+    def test_cwd_fallback(self):
+        d = self.tmp_path / "lonely"
+        d.mkdir()
+        path, src = self._detect(d)
+        self.assertEqual(path, d.resolve())
+        self.assertEqual(src, "cwd")
+
+    def test_git_root_walk(self):
+        root = self.tmp_path / "myproj"
+        (root / ".git").mkdir(parents=True)
+        deep = root / "src" / "nested" / "here"
+        deep.mkdir(parents=True)
+        path, src = self._detect(deep)
+        self.assertEqual(path, root.resolve())
+        self.assertEqual(src, "git-root")
+
+    def test_git_file_worktree(self):
+        # Worktrees have a .git FILE (pointing at the real gitdir), not a dir.
+        root = self.tmp_path / "wt"
+        root.mkdir()
+        (root / ".git").write_text("gitdir: /somewhere/else\n")
+        nested = root / "a" / "b"
+        nested.mkdir(parents=True)
+        path, src = self._detect(nested)
+        self.assertEqual(path, root.resolve())
+        self.assertEqual(src, "git-root")
+
+    def test_cowork_env_wins_over_git(self):
+        # Env var should short-circuit the .git walk.
+        cowork = self.tmp_path / "cowork-ws"
+        cowork.mkdir()
+        gitdir = self.tmp_path / "git-proj"
+        (gitdir / ".git").mkdir(parents=True)
+        nested = gitdir / "src"
+        nested.mkdir()
+        os.environ["COWORK_WORKSPACE_FOLDER"] = str(cowork)
+        path, src = self._detect(nested)
+        self.assertEqual(path, cowork.resolve())
+        self.assertEqual(src, "cowork-workspace")
+
+    def test_project_brain_home_overrides_everything(self):
+        # Explicit override beats Cowork beats git.
+        override = self.tmp_path / "override"
+        override.mkdir()
+        cowork = self.tmp_path / "cowork-ws"
+        cowork.mkdir()
+        os.environ["PROJECT_BRAIN_HOME"] = str(override)
+        os.environ["COWORK_WORKSPACE_FOLDER"] = str(cowork)
+        path, src = self._detect(self.tmp_path)
+        self.assertEqual(path, override.resolve())
+        self.assertEqual(src, "env:PROJECT_BRAIN_HOME")
+
+    def test_codex_env(self):
+        codex = self.tmp_path / "codex-proj"
+        codex.mkdir()
+        os.environ["CODEX_PROJECT_ROOT"] = str(codex)
+        path, src = self._detect(self.tmp_path)
+        self.assertEqual(path, codex.resolve())
+        self.assertEqual(src, "codex-project")
+
+    def test_claude_env(self):
+        claude = self.tmp_path / "claude-proj"
+        claude.mkdir()
+        os.environ["CLAUDE_PROJECT_ROOT"] = str(claude)
+        path, src = self._detect(self.tmp_path)
+        self.assertEqual(path, claude.resolve())
+        self.assertEqual(src, "claude-project")
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

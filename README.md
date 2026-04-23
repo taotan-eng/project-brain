@@ -4,7 +4,7 @@
 
 `project-brain` is a set of fourteen skills that cooperate to move an idea from "I was thinking about X" to a merged, reviewed, auditable decision in your repo. It is deliberately generic — a new project installs the pack, fills in a few slots (domain taxonomy, debate personas, build commands), and gets the full pipeline with no project-specific skill code.
 
-The pack lives in `project-brain/` at your project root — visible, tracked, reviewable via PR. Nothing is hidden under `.ai/` or derived from a database; the tree itself is authoritative.
+The pack lives in `project-brain/` at your project root — visible, tracked, reviewable via PR. Nothing is hidden in a dotfile, nothing is derived from a database; the tree itself is authoritative.
 
 ---
 
@@ -345,6 +345,14 @@ Five skills are invokable from anywhere and own no per-artifact lifecycle state:
 ---
 
 ## Configuration (rc4+)
+
+### 1:1 binding with the host environment (rc4)
+
+Before reading about the config files, know the basic operating model: **one project-brain corresponds to exactly one host-environment project.** The "host" is whichever agent runtime you're in — Cowork (the selected workspace folder), Codex (the bound project root), Claude Code (cwd at session start), or a plain shell (cwd / explicit `--brain=<path>`). The brain lives at `<host-project-root>/project-brain/`. Switching projects is a host-level operation: open a different Cowork session, start Codex in a different directory, or `cd` before invoking skills. There is no `switch-project` skill, no "active project" pointer, no session-scoped state in project-brain. See CONVENTIONS § 1.1 for the full contract.
+
+The user-global registry (below) has a narrow role as a consequence: it only matters for cross-project `soft_links` between distinct host projects. A brain that doesn't reference any other project never needs to consult it.
+
+### Config files
 
 Two optional config layers adjust pack behavior without changing any schema. Both are **opt-in** — the pack works fine with neither file.
 
