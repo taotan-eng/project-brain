@@ -1,18 +1,22 @@
 ---
 name: init-project-brain
-description: One-time scaffold of the project-brain skeleton into a git repo. Default invocation: zero interactive questions. Alias=slugified dir name, title=title-cased dir name, owner=git config user.email. Creates project-brain/ with CONVENTIONS.md, tree/NODE.md, empty threads/ and archive/. Optional --interactive flag prompts for all values. Optional --init-git runs git init + scaffold commit. Appends alias entry to ~/.config/project-brain/projects.yaml. Use when the user says "set up project brain", "install project-brain here", or adopts this pack in a new repo first time.
+description: One-time scaffold of the project-brain skeleton into any directory (git not required by default in rc4). Default invocation: zero interactive questions and zero git invocations. Alias=slugified dir name, title=title-cased dir name, owner=git config user.email (read from ~/.gitconfig if available; falls back to $USER@localhost with a TODO marker). Creates project-brain/ with CONVENTIONS.md, config.yaml, tree/NODE.md, empty threads/ and archive/, plus a .gitignore for transcripts and attachments. Optional --interactive flag prompts for all values. Optional --init-git runs git init + scaffold commit and opts in to the git-based preconditions. Optional --no-registry skips appending an alias entry to ~/.config/project-brain/projects.yaml. Use when the user says "set up project brain", "install project-brain here", or adopts this pack in a new directory first time.
 version: 1.0.0-rc4
 pack: project-brain
 requires:
-  - git
   - "read:pack/CONVENTIONS.md"
   - "write:[project-root]"
   - "write:~/.config/project-brain/projects.yaml"
+# Note: `git` was listed as a hard requirement pre-rc4. rc4 makes it optional —
+# git is only invoked when --init-git is passed. The default flow is a plain
+# `mkdir` + file-write, no git at all.
 ---
 
 # init-project-brain
 
-Turns a plain git repository into a project-brain-enabled one. Before this skill runs, there is no place for threads to live and no tree structure for decisions to land in; after it runs, every other skill in the pack has its preconditions met. This is the first skill a user invokes when adopting the pack in a new project.
+Turns any directory into a project-brain-enabled one. Before this skill runs, there is no place for threads to live and no tree structure for decisions to land in; after it runs, every other skill in the pack has its preconditions met. This is the first skill a user invokes when adopting the pack in a new project.
+
+**Git is optional (rc4).** The default flow is a plain directory scaffold — no `git init`, no commit, no repo required. Pass `--init-git` if you want init to run `git init` and commit the scaffold. Users who already have a git repo and just want the brain scaffolded without an auto-commit run the skill without any flag; they can `git add && git commit` themselves when ready.
 
 The skill is deliberately opinionated at a few points: it pre-scaffolds top-level domain directories from § 10.1, it always copies a fresh `CONVENTIONS.md` (so the project starts on the pack's current version, not a stale one), and it writes a single bootstrap commit so the entire scaffold lands as one reviewable unit. Sub-domains and the leaves inside them emerge later via `promote-thread-to-tree`.
 
@@ -48,14 +52,14 @@ The skill is deliberately opinionated at a few points: it pre-scaffolds top-leve
 
 ## Preconditions
 
-The skill **refuses** if any of these are not met.
+The skill **refuses** if any of these are not met. Preconditions 1, 3, 6 apply **only when `--init-git` is set** — rc4 makes git entirely optional and the default install creates a plain directory with no git involvement.
 
-1. Current working directory is inside a git repository (`git rev-parse --is-inside-work-tree` returns `true`).
+1. (Only if `--init-git`) Current working directory is inside a git repository (`git rev-parse --is-inside-work-tree` returns `true`). Without `--init-git` the skill does not care — the brain is just a directory full of markdown.
 2. The target `brain_path` does not already exist. If it does, refuse — direct the user at a hypothetical `repair-brain` or ask them to move the existing directory first.
-3. Working tree is clean on `main` (or the project's default branch). Init commits directly to that branch; uncommitted changes would be swept into the bootstrap commit.
-4. `git config user.email` returns a value.
-5. `~/.config/project-brain/projects.yaml`, if it exists, does **not** already contain `project_alias`. If it does, prompt — suggest a suffixed alias (`<alias>-2`) or ask the user to pick a different one.
-6. `git remote -v` returns at least one remote, OR the user explicitly confirms offline-only scaffolding (no push, no remote entry in `projects.yaml`).
+3. (Only if `--init-git`) Working tree is clean on `main` (or the project's default branch). Init's `--init-git` commits directly to that branch; uncommitted changes would be swept into the bootstrap commit.
+4. `git config user.email` is *read* to seed the `owner` default. This works whether or not we're inside a git repo (`git config` reads `~/.gitconfig` globally). If it returns nothing, fall back to `$USER@localhost` and emit the TODO marker described in Process step 4. **This is never a refuse — it's always best-effort.**
+5. `~/.config/project-brain/projects.yaml`, if it exists, does **not** already contain `project_alias`. If it does, prompt — suggest a suffixed alias (`<alias>-2`) or ask the user to pick a different one. (Skipped entirely if `--no-registry` is set.)
+6. (Only if `--init-git` AND the user wants a registry entry with remote info) `git remote -v` returns at least one remote, OR the user explicitly confirms offline-only scaffolding. Without `--init-git`, the registry entry omits the `remotes:` block regardless.
 7. Each entry in `domain_taxonomy` matches the slug rules of § 11.1 (kebab-case, no sub-paths — sub-nesting emerges through promotion, not init).
 
 ## Process
@@ -63,7 +67,11 @@ The skill **refuses** if any of these are not met.
 Each step is atomic. A failure at step N leaves the filesystem in whatever state it was after step N-1; no partial scaffolds are left committed.
 
 1. **Resolve inputs.** If `--interactive` is set, prompt for all values (project_alias, project_title, domain_taxonomy, remotes/bases, personas, toolchain). Otherwise, apply zero-Q&A defaults: derive alias and title from directory name, set owner from git config, set domain_taxonomy to `[engineering]`. Store inferred `brain_path` as `<cwd>/project-brain` or explicit `--brain-path` value.
-2. **Validate preconditions.** Run checks 1–7. On failure, stop and report the specific precondition.
+2. **Validate preconditions.** Run only the preconditions that apply to the current invocation:
+    - ALWAYS check: #2 (brain_path doesn't exist), #4 (read git config best-effort — never fails), #5 (registry alias collision, skip if `--no-registry`), #7 (domain_taxonomy slug rules).
+    - ONLY if `--init-git` is set: also check #1 (inside a git repo), #3 (working tree clean), #6 (remotes, if the user wants them in the registry entry).
+    - **Do NOT run `git rev-parse --is-inside-work-tree` unless `--init-git` is set.** The default flow is pure file ops — probing for a git repo is out of scope and triggers noisy permission prompts in agentic IDEs for no reason.
+    - On failure, stop and report the specific precondition. Do not offer to `git init` unless the user passed `--init-git`; without that flag, git is irrelevant.
 3. **Create brain directory.** `mkdir -p <brain_path>/tree <brain_path>/threads <brain_path>/archive`.
 4. **Write `CONVENTIONS.md`.** Read the pack's canonical `CONVENTIONS.md` (the one this pack ships). Splice § 10 subsections with the user's answers:
     - § 10.1 Tree domain taxonomy — replaced with the `domain_taxonomy` list as a fenced-block outline.
