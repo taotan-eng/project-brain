@@ -1,6 +1,6 @@
 {
   "name": "project-brain",
-  "version": "1.0.0-rc.3",
+  "version": "1.0.0-rc4",
   "description": "A portable skill pack that turns unstructured thinking into a durable decision tree. Ships fourteen cooperating skills for moving an idea from 'I was thinking about X' to a merged, reviewed, auditable decision in your repo.",
   "author": {
     "name": "Tom",

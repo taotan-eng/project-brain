@@ -8,8 +8,8 @@
   "plugins": [
     {
       "name": "project-brain",
-      "description": "Fourteen cooperating skills that turn unstructured thinking into a durable, reviewable decision tree inside your repo. Threads, leaves, NODE.md indexes, and a project registry — all plain markdown in thoughts/.",
-      "version": "1.0.0-rc.3",
+      "description": "Fourteen cooperating skills that turn unstructured thinking into a durable, reviewable decision tree inside your repo. Threads, leaves, NODE.md indexes, and a project registry — all plain markdown in project-brain/.",
+      "version": "1.0.0-rc4",
       "author": {
         "name": "Tom",
         "email": "taotan6@gmail.com"
