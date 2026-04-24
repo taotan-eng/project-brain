@@ -68,7 +68,7 @@ done
 # Validate
 # ---------------------------------------------------------------------------
 
-for req in BRAIN SLUG TITLE PURPOSE PRIMARY_PROJECT; do
+for req in BRAIN SLUG TITLE PURPOSE; do
   if [[ -z "${!req}" ]]; then
     echo "error: --${req,,} is required." >&2
     exit 2
@@ -83,6 +83,45 @@ BRAIN="$(cd "$BRAIN" && pwd)"
 
 if [[ ! -f "$BRAIN/CONVENTIONS.md" ]]; then
   echo "error: $BRAIN does not look like a project-brain (missing CONVENTIONS.md)." >&2
+  exit 2
+fi
+
+# Auto-resolve --primary-project from <brain>/config.yaml when absent. The
+# overwhelmingly common case is a brain that has exactly one alias (the
+# project-brain init scaffolds just that); we pick it silently. If multiple
+# aliases are declared, demand --primary-project explicitly. This removes a
+# mandatory Read-tool call from the calling skill — one fewer Cowork
+# round-trip on the hot path.
+if [[ -z "$PRIMARY_PROJECT" ]]; then
+  CFG="$BRAIN/config.yaml"
+  if [[ -f "$CFG" ]]; then
+    PP="$(awk '
+      /^primary_project[[:space:]]*:/ {
+        v = $0; sub(/^primary_project[[:space:]]*:[[:space:]]*/, "", v)
+        gsub(/^["\x27]|["\x27][[:space:]]*$/, "", v)
+        print v; exit
+      }' "$CFG")"
+    if [[ -n "$PP" ]]; then
+      PRIMARY_PROJECT="$PP"
+    else
+      # Fall back to a single alias if primary_project isn't set but aliases
+      # has exactly one entry (the init-brain.sh default).
+      mapfile -t ALIASES < <(awk '
+        /^aliases[[:space:]]*:/ { in_a=1; next }
+        in_a && /^[^[:space:]#]/ { in_a=0 }
+        in_a && /^[[:space:]]+[a-z][a-z0-9-]*[[:space:]]*:/ {
+          name = $1; sub(/:$/, "", name); gsub(/^[[:space:]]+|[[:space:]]+$/, "", name)
+          print name
+        }' "$CFG")
+      if [[ ${#ALIASES[@]} -eq 1 ]]; then
+        PRIMARY_PROJECT="${ALIASES[0]}"
+      fi
+    fi
+  fi
+fi
+if [[ -z "$PRIMARY_PROJECT" ]]; then
+  echo "error: --primary-project could not be auto-resolved from $BRAIN/config.yaml." >&2
+  echo "       Pass --primary-project=<alias> explicitly." >&2
   exit 2
 fi
 

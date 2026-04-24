@@ -50,53 +50,34 @@ The skill **refuses** if any of these are not met. It does not silently fix.
 
 ## Process
 
-> ### ⛔️ HARD CONSTRAINT FOR THE AGENT
+> ### ⛔️ HARD CONSTRAINT — ONE TOOL CALL
 >
-> **All mechanical scaffolding happens inside `${CLAUDE_PLUGIN_ROOT}/scripts/new-thread.sh` — a single Bash tool call.** You, the agent, **MUST NOT**:
+> **Call `${CLAUDE_PLUGIN_ROOT}/scripts/new-thread.sh` ONCE.** No `Read` of `config.yaml`, no `Read` of templates, no `Write` / `Edit` / `mkdir`. The script reads config.yaml itself, validates the slug, scaffolds, and rebuilds indexes. Every pre-script tool call adds 30–60s of Cowork overhead; skip them.
 >
-> - Read template files yourself (`Read assets/thread-template/...`). The script reads them.
-> - Write scaffold files yourself (`Write .../thread.md`, `Write .../decisions-candidates.md`, `Write .../open-questions.md`). The script writes them.
-> - Run `mkdir` yourself as a separate Bash call. The script does `mkdir`.
-> - Invoke `verify-tree --rebuild-index` yourself. The script runs it internally after writing the templates.
-> - "Write all the thread files in parallel." No. Call the script, nothing else.
+> **DERIVE `slug`, `title`, `purpose` from the user's own message before asking.** "Start a thread about authentication" → `slug=authentication`, `title="Authentication"`, `purpose="thread for authentication"`. Only use `AskUserQuestion` if slug/title are genuinely ambiguous (e.g., the user said "new thread" with no topic).
 >
-> **You MUST call `${CLAUDE_PLUGIN_ROOT}/scripts/new-thread.sh` exactly once, with appropriate flags, and nothing else in the mechanical-scaffolding path.** `CLAUDE_PLUGIN_ROOT` is the env var Claude Code exports for plugin skills; it resolves to this pack's install root. **Do not** strip it off and call `scripts/new-thread.sh` bare — the relative path would resolve against the skill's own directory and fail (`no such file`). Each individual tool call triggers a permission prompt + a full-content diff render in the agent UI. The script completes in ~90ms.
->
-> If you find yourself typing any of: `Read .../assets/thread-template/`, `Write .../threads/<slug>/`, `mkdir .../threads/<slug>` — STOP. You are improvising. The single correct Bash call is in Step 2 below.
+> Strip `${CLAUDE_PLUGIN_ROOT}` and the bare `scripts/new-thread.sh` resolves against the skill's own dir → "no such file". Keep it.
 
-Steps in order:
+**One call, happy path:**
 
-1. **Resolve inputs (pre-script, no file ops).** Ask the user via `AskUserQuestion` for any missing required content: `slug`, `title`, `purpose`. Pull `primary_project` from the brain's `config.yaml` (one Read of a tiny file). Resolve `owner`: `--owner <email>` flag → use it verbatim; otherwise use the literal placeholder `TODO@example.com`. **Do NOT invoke `git config user.email`, do NOT read `$EMAIL` or `$USER`, do NOT run any shell command to guess** — rc4 keeps pre-promote skills 100% shell-free except the single script call in Step 2.
+```bash
+"${CLAUDE_PLUGIN_ROOT}/scripts/new-thread.sh" \
+  --brain='<absolute brain path>' \
+  --slug='<slug>' \
+  --title='<title>' \
+  --purpose='<purpose>' \
+  [--primary-project='<alias>']  # OMIT — script auto-reads from config.yaml
+  [--owner='<email>']            # OMIT unless user supplied one
+  [--tree-domain='<slug>']       # OMIT unless user volunteered one
+```
 
-2. **Call the scaffolding script. This is the ONLY mechanical tool call.**
+The script auto-resolves `--primary-project` from `<brain>/config.yaml` (picks `primary_project:` or the single alias). Pass it explicitly only if the brain has multiple aliases and the user picked a non-primary one. `--brain` can be the nearest ancestor `project-brain/` dir containing `CONVENTIONS.md` — if you can infer it from cwd context without a Read, do; otherwise pass the path already known from the conversation.
 
-   Bash tool call (one invocation, one permission prompt):
+What the script does (no need to replicate): slug validation → create `threads/<slug>/` → copy and substitute three templates → run `verify-tree --rebuild-index`. ~90ms, one permission prompt.
 
-   ```bash
-   "${CLAUDE_PLUGIN_ROOT}/scripts/new-thread.sh" \
-     --brain='<absolute brain path>' \
-     --slug='<slug>' \
-     --title='<title>' \
-     --purpose='<purpose>' \
-     --primary-project='<alias>' \
-     [--owner='<email>']        \   # only if --owner was supplied
-     [--tree-domain='<slug>']   \   # only if user volunteered one
-     [--related-projects='<csv>']
-   ```
+**Do not** append to transcript.md in a separate Edit call — `record-artifact --append` is the right skill for transcript additions during a session. `new-thread` just scaffolds.
 
-   **Do not call any other tool before this bash call** except the input-resolution AskUserQuestion and the one Read of `config.yaml` for `primary_project`. In particular: do not Read template files "to understand what the script will write" — the script is self-contained, tested, and ~100× faster than orchestrating individual tool calls.
-
-   What the script does internally (for your understanding only — you don't replicate this):
-
-   - Validates the slug (§ 11.1) and refuses if `threads/<slug>/` already exists.
-   - `mkdir -p <brain>/threads/<slug>/`.
-   - Copies + substitutes three template files: `thread.md`, `decisions-candidates.md`, `open-questions.md`.
-   - Runs `verify-tree --rebuild-index` so `thread-index.md` and `current-state.md` stay in sync.
-   - Prints one success line + an optional placeholder hint to stdout.
-
-3. **Append session transcript (optional, only if `transcript_logging=on`).** One Edit-tool append to `<brain>/threads/<slug>/transcript.md` following CONVENTIONS § 2.5.1 format. Session content is naturally dynamic; the script scaffolded everything mechanical.
-
-4. **Report.** Passthrough the script's stdout verbatim. Do not add any of your own commentary about git, commits, or "next steps". At verbosity=terse the full user-visible output is exactly:
+After success, **report.** Passthrough the script's stdout verbatim. No commentary about git, commits, or next steps. At verbosity=terse:
 
     ```
     Created thread '<slug>' at <brain>/threads/<slug>.
