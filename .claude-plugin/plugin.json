@@ -20,23 +20,5 @@
     "architecture-decision-records",
     "brain",
     "productivity"
-  ],
-  "skills": [
-    "skills/assign-thread",
-    "skills/discard-promotion",
-    "skills/discard-thread",
-    "skills/discover-threads",
-    "skills/finalize-promotion",
-    "skills/init-project-brain",
-    "skills/materialize-context",
-    "skills/multi-agent-debate",
-    "skills/new-thread",
-    "skills/park-thread",
-    "skills/promote-thread-to-tree",
-    "skills/record-artifact",
-    "skills/review-parked-threads",
-    "skills/review-thread",
-    "skills/update-thread",
-    "skills/verify-tree"
   ]
 }
