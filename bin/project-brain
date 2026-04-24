@@ -1,0 +1,213 @@
+#!/usr/bin/env bash
+# project-brain — CLI adapter for the project-brain pack.
+#
+# This is a proof-of-portability adapter that shows you can drive the
+# entire pack from a plain shell, without Claude Code or any other
+# agentic runtime. It translates terse subcommands into the underlying
+# scripts/*.sh invocations documented in each skill's SKILL.md.
+#
+# Usage:
+#   project-brain <command> [args...]
+#
+# Commands:
+#   init                                           one-time setup in cwd
+#   new-thread <slug> '<title>' --purpose '<p>'    capture a new thread
+#   review [<slug>] [--full] [--last=N]            summarize a thread
+#   record <slug> '<title>' [flags]                record an artifact
+#     flags: --kind=debate|analysis|benchmark|sketch|reference|other
+#            --content='...' | --file=<path> (repeatable) | --stdin
+#            --append  (put content into transcript.md instead)
+#   assign <slug> --add|--remove|--set|--clear <handles> [--actor=<email>]
+#   park <slug> '<reason>'
+#   unpark <slug> [--trigger='<text>']
+#   discard <slug> '<reason>'
+#   update <slug> <operation> [operation-args...]
+#     operations: refine --target=<maturity>
+#                 lock
+#                 merge-into --slug=<other>
+#                 soft-link-add --url=<uri>
+#                 soft-link-remove --url=<uri>
+#                 promote-prep
+#   verify                                         read-only validation
+#   verify --rebuild-index                         regen aggregate indexes
+#
+# Exit codes passthrough from the underlying scripts: 0=ok, 1=operational
+# failure (stderr has details), 2=invocation error (bad args).
+#
+# This CLI intentionally does NO clarifying prompts. Missing inputs fail
+# fast with "error: --<flag> is required." That's the CLI contract — the
+# agentic-runtime adapters (Claude Code's SKILL.md) handle clarification
+# via AskUserQuestion; this adapter's users type what they mean.
+
+set -euo pipefail
+
+# -------- locate pack root (single source of truth) -----------------------
+
+# Priority: user override > runtime-exported > script-relative fallback.
+# See PORTING.md §3 for the rationale.
+PACK_ROOT="${PROJECT_BRAIN_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}}"
+SCRIPTS="${PACK_ROOT}/scripts"
+
+if [[ ! -x "${SCRIPTS}/init-brain.sh" ]]; then
+  echo "error: project-brain scripts not found at ${SCRIPTS}" >&2
+  echo "       Set PROJECT_BRAIN_PLUGIN_ROOT to the pack install path." >&2
+  exit 2
+fi
+
+# -------- helpers ---------------------------------------------------------
+
+# Walk up from cwd to find <root>/project-brain/CONVENTIONS.md.
+find_brain() {
+  local start cur
+  start="${1:-$(pwd -P)}"
+  cur="$start"
+  for _ in $(seq 1 40); do
+    if [[ -f "$cur/CONVENTIONS.md" && "$(basename "$cur")" == "project-brain" ]]; then
+      printf '%s' "$cur"; return 0
+    fi
+    if [[ -f "$cur/project-brain/CONVENTIONS.md" ]]; then
+      printf '%s/project-brain' "$cur"; return 0
+    fi
+    local parent; parent="$(dirname "$cur")"
+    [[ "$parent" == "$cur" ]] && break
+    cur="$parent"
+  done
+  return 1
+}
+
+# Infer the thread slug from cwd (nearest ancestor matching threads/<slug>).
+infer_slug_from_cwd() {
+  local cur; cur="$(pwd -P)"
+  while [[ "$cur" != "/" ]]; do
+    local parent base
+    parent="$(dirname "$cur")"
+    base="$(basename "$cur")"
+    if [[ "$(basename "$parent")" == "threads" || "$(basename "$parent")" == "archive" ]]; then
+      printf '%s' "$base"; return 0
+    fi
+    cur="$parent"
+  done
+  return 1
+}
+
+usage() {
+  sed -n '/^# Usage:/,/^$/p' "$0" | sed 's/^# \?//'
+  exit "${1:-0}"
+}
+
+need() {
+  if [[ -z "${2:-}" ]]; then
+    echo "error: missing required argument: $1" >&2
+    exit 2
+  fi
+}
+
+# -------- subcommand dispatch --------------------------------------------
+
+CMD="${1:-}"
+shift || true
+
+case "$CMD" in
+  ""|-h|--help|help)
+    usage 0
+    ;;
+
+  init)
+    # Forward all args (--home, --alias, --title, --owner, --force, etc.)
+    exec "${SCRIPTS}/init-brain.sh" "$@"
+    ;;
+
+  new-thread)
+    SLUG="${1:-}"; TITLE="${2:-}"
+    need "<slug>" "$SLUG"
+    need "<title>" "$TITLE"
+    shift 2 || true
+    BRAIN="$(find_brain)" || { echo "error: no project-brain found at or above cwd" >&2; exit 2; }
+    exec "${SCRIPTS}/new-thread.sh" --brain="$BRAIN" --slug="$SLUG" --title="$TITLE" "$@"
+    ;;
+
+  review)
+    SLUG="${1:-}"
+    if [[ -z "$SLUG" || "$SLUG" == --* ]]; then
+      # allow `project-brain review` from inside a thread dir
+      if [[ -n "$SLUG" ]]; then set -- "$SLUG" "$@"; fi
+      SLUG="$(infer_slug_from_cwd)" || { echo "error: <slug> is required (or run from inside a thread dir)" >&2; exit 2; }
+    else
+      shift
+    fi
+    BRAIN="$(find_brain)" || { echo "error: no project-brain found" >&2; exit 2; }
+    exec "${SCRIPTS}/review-thread.sh" --brain="$BRAIN" --slug="$SLUG" "$@"
+    ;;
+
+  record)
+    SLUG="${1:-}"; TITLE="${2:-}"
+    need "<slug>" "$SLUG"
+    need "<title>" "$TITLE"
+    shift 2 || true
+    BRAIN="$(find_brain)" || { echo "error: no project-brain found" >&2; exit 2; }
+    # Translate --kind shorthand → --artifact-kind (matches SKILL.md text).
+    ARGS=()
+    while [[ $# -gt 0 ]]; do
+      case "$1" in
+        --kind=*) ARGS+=("--artifact-kind=${1#*=}"); shift ;;
+        --kind)   ARGS+=("--artifact-kind=$2"); shift 2 ;;
+        *)        ARGS+=("$1"); shift ;;
+      esac
+    done
+    exec "${SCRIPTS}/record-artifact.sh" --brain="$BRAIN" --slug="$SLUG" --title="$TITLE" "${ARGS[@]}"
+    ;;
+
+  assign)
+    SLUG="${1:-}"
+    need "<slug>" "$SLUG"
+    shift
+    BRAIN="$(find_brain)" || { echo "error: no project-brain found" >&2; exit 2; }
+    exec "${SCRIPTS}/assign-thread.sh" --brain="$BRAIN" --slug="$SLUG" "$@"
+    ;;
+
+  park)
+    SLUG="${1:-}"; REASON="${2:-}"
+    need "<slug>" "$SLUG"
+    need "<reason>" "$REASON"
+    shift 2 || true
+    BRAIN="$(find_brain)" || { echo "error: no project-brain found" >&2; exit 2; }
+    exec "${SCRIPTS}/park-thread.sh" --brain="$BRAIN" --slug="$SLUG" --reason="$REASON" "$@"
+    ;;
+
+  unpark)
+    SLUG="${1:-}"
+    need "<slug>" "$SLUG"
+    shift
+    BRAIN="$(find_brain)" || { echo "error: no project-brain found" >&2; exit 2; }
+    exec "${SCRIPTS}/park-thread.sh" --brain="$BRAIN" --slug="$SLUG" --unpark "$@"
+    ;;
+
+  discard)
+    SLUG="${1:-}"; REASON="${2:-}"
+    need "<slug>" "$SLUG"
+    need "<reason>" "$REASON"
+    shift 2 || true
+    BRAIN="$(find_brain)" || { echo "error: no project-brain found" >&2; exit 2; }
+    exec "${SCRIPTS}/discard-thread.sh" --brain="$BRAIN" --slug="$SLUG" --reason="$REASON" "$@"
+    ;;
+
+  update)
+    SLUG="${1:-}"; OP="${2:-}"
+    need "<slug>" "$SLUG"
+    need "<operation>" "$OP"
+    shift 2 || true
+    BRAIN="$(find_brain)" || { echo "error: no project-brain found" >&2; exit 2; }
+    exec "${SCRIPTS}/update-thread.sh" --brain="$BRAIN" --slug="$SLUG" --operation="$OP" "$@"
+    ;;
+
+  verify)
+    BRAIN="$(find_brain)" || { echo "error: no project-brain found" >&2; exit 2; }
+    exec python3 "${SCRIPTS}/verify-tree.py" --brain="$BRAIN" "$@"
+    ;;
+
+  *)
+    echo "error: unknown command: $CMD" >&2
+    echo "Run '$0 --help' for a list of commands." >&2
+    exit 2
+    ;;
+esac
