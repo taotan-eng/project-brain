@@ -1097,5 +1097,136 @@ class HostProjectRootTests(BaseTest):
         self.assertEqual(src, "claude-project")
 
 
+class PromoteLocalTests(BaseTest):
+    """promote-local.sh end-to-end: stage leaves under tree-staging/, run
+    the script, verify tree/ populated correctly + thread state flipped +
+    validator clean. Exercises the --mode=local path from CONVENTIONS § 4.5.
+    """
+
+    PROMOTE_LOCAL = HERE / "promote-local.sh"
+
+    def _stage_leaf(self, brain, thread_slug, domain, leaf_slug,
+                    title="Leaf", primary="demo"):
+        """Write a validator-valid leaf at threads/<slug>/tree-staging/<domain>/<leaf>.md."""
+        import time
+        staging = brain / "threads" / thread_slug / "tree-staging" / domain
+        staging.mkdir(parents=True, exist_ok=True)
+        now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+        (staging / f"{leaf_slug}.md").write_text(
+            "---\n"
+            f"id: {leaf_slug}\n"
+            f"title: \"{title}\"\n"
+            f"created_at: {now}\n"
+            "owner: TODO@example.com\n"
+            f"primary_project: {primary}\n"
+            "related_projects: []\n"
+            "soft_links: []\n"
+            "status: draft\n"
+            "node_type: leaf\n"
+            f"domain: {domain}\n"
+            f"source_thread: {thread_slug}\n"
+            "source_debate: null\n"
+            "impl_spec: null\n"
+            "built_in: null\n"
+            "---\n\n"
+            f"# {title}\n\n"
+            "## Context\nx\n## Decision\ny\n## Consequences\nz\n"
+        )
+
+    def _run_promote_local(self, brain, *extra_args):
+        return subprocess.run(
+            ["bash", str(self.PROMOTE_LOCAL), "--brain", str(brain), *extra_args],
+            capture_output=True, text=True,
+        )
+
+    def test_promote_local_full(self):
+        """Full promotion: stage 2 leaves → promote all → validator clean."""
+        brain = make_brain(self.tmp_path)
+        make_thread(brain, "auth", status="active", maturity="refining")
+        self._stage_leaf(brain, "auth", "architecture", "transport")
+        self._stage_leaf(brain, "auth", "architecture", "tokens")
+
+        r = self._run_promote_local(brain, "--slug", "auth", "--no-commit")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("Done.", r.stdout)
+
+        tree_dir = brain / "tree" / "architecture"
+        names = sorted(p.name for p in tree_dir.glob("*.md"))
+        self.assertEqual(names, ["NODE.md", "tokens.md", "transport.md"])
+
+        code, data, *_ = run_validator(brain)
+        self.assertEqual(code, 0, data.get("errors"))
+
+    def test_promote_local_subset(self):
+        """--leaves=A,C leaves B staged; validator clean."""
+        brain = make_brain(self.tmp_path)
+        make_thread(brain, "api", status="active", maturity="refining")
+        for leaf in ("alpha", "beta", "gamma"):
+            self._stage_leaf(brain, "api", "engineering", leaf)
+
+        r = self._run_promote_local(
+            brain, "--slug", "api", "--leaves", "alpha,gamma", "--no-commit",
+        )
+        self.assertEqual(r.returncode, 0, r.stderr)
+
+        tree_leaves = sorted(
+            p.name for p in (brain / "tree" / "engineering").glob("*.md")
+            if p.name != "NODE.md"
+        )
+        self.assertEqual(tree_leaves, ["alpha.md", "gamma.md"])
+
+        staging_remaining = sorted(
+            p.name for p in (brain / "threads" / "api" / "tree-staging"
+                             / "engineering").glob("*.md")
+        )
+        self.assertEqual(staging_remaining, ["beta.md"])
+
+        code, data, *_ = run_validator(brain)
+        self.assertEqual(code, 0, data.get("errors"))
+
+    def test_promote_local_archive_thread(self):
+        """--archive-thread moves thread to archive/ with status=archived."""
+        brain = make_brain(self.tmp_path)
+        make_thread(brain, "ops", status="active", maturity="locking")
+        self._stage_leaf(brain, "ops", "operations", "pager-routing")
+
+        r = self._run_promote_local(
+            brain, "--slug", "ops", "--no-commit", "--archive-thread",
+        )
+        self.assertEqual(r.returncode, 0, r.stderr)
+
+        self.assertFalse((brain / "threads" / "ops").exists())
+        archived = brain / "archive" / "ops" / "thread.md"
+        self.assertTrue(archived.exists())
+        self.assertIn("status: archived", archived.read_text())
+        self.assertTrue((brain / "tree" / "operations" / "pager-routing.md").exists())
+
+        code, data, *_ = run_validator(brain)
+        self.assertEqual(code, 0, data.get("errors"))
+
+    def test_promote_local_no_staged_leaves_errors(self):
+        """If tree-staging/ doesn't exist, script exits 1 with a clear hint."""
+        brain = make_brain(self.tmp_path)
+        make_thread(brain, "empty", status="active", maturity="exploring")
+        # Note: no _stage_leaf calls — tree-staging/ won't exist.
+
+        r = self._run_promote_local(brain, "--slug", "empty", "--no-commit")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("no staged leaves", r.stderr + r.stdout)
+
+    def test_promote_local_leaves_filter_no_match_errors(self):
+        """--leaves='nonexistent' fails with a list of what's actually staged."""
+        brain = make_brain(self.tmp_path)
+        make_thread(brain, "x", status="active", maturity="refining")
+        self._stage_leaf(brain, "x", "engineering", "real-leaf")
+
+        r = self._run_promote_local(
+            brain, "--slug", "x", "--leaves", "nonexistent", "--no-commit",
+        )
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("matched none", r.stderr + r.stdout)
+        self.assertIn("real-leaf", r.stderr + r.stdout)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
