@@ -186,5 +186,6 @@ fi
 # ---------------------------------------------------------------------------
 
 echo "Discarded thread '${SLUG}' to archive (reason: ${REASON})."
+echo "Done."
 
 exit 0

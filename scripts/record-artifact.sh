@@ -179,6 +179,7 @@ if [[ $APPEND -eq 1 ]]; then
   echo "Appended '$TITLE' to $(realpath --relative-to="$BRAIN" "$TRANSCRIPT")."
   # Append mode doesn't change validator-visible state; skip the rebuild for
   # speed. (The transcript is kind=transcript, which is exempt from V-06.)
+  echo "Done."
   exit 0
 fi
 
@@ -365,4 +366,5 @@ if [[ "$BY" == "TODO@example.com" ]]; then
   echo "  by = TODO@example.com placeholder; pass --by=<email> to replace."
 fi
 
+echo "Done."
 exit 0

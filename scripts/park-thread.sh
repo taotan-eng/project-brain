@@ -194,5 +194,6 @@ if [[ "$UNPARK" -eq 1 ]]; then
 else
   echo "Parked thread '${SLUG}' (reason: ${REASON}) — status: parked."
 fi
+echo "Done."
 
 exit 0

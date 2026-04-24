@@ -204,5 +204,6 @@ fi
 # ---------------------------------------------------------------------------
 
 echo "Updated thread '${SLUG}' — operation: ${OPERATION}."
+echo "Done."
 
 exit 0

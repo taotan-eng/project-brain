@@ -226,5 +226,6 @@ fi
 # ---------------------------------------------------------------------------
 
 echo "Updated assignments on thread '${SLUG}' — operation: ${OPERATION}."
+echo "Done."
 
 exit 0

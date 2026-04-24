@@ -357,4 +357,5 @@ fi
 # has intentionally moved away from. Git enters at promote-thread-to-tree,
 # where it has to — not before.
 
+echo "Done."
 exit 0

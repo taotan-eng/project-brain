@@ -226,4 +226,5 @@ fi
 # No git-commit reminder at capture time by design: capture/refine/debate
 # are all git-free per rc4. Git enters at promote-time.
 
+echo "Done."
 exit 0
