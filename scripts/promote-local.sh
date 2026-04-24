@@ -179,7 +179,7 @@ for entry in "${STAGED[@]}"; do
     # Strip HTML-commented placeholder bullets — the validator parses
     # bullet-shaped lines inside HTML comments as real links and reports
     # unresolved references (`./leaf-slug.md`). Remove them at scaffold time.
-    sed -i.bak '/^<!-- - \[/d' "$node_md" && rm -f "${node_md}.bak"
+    sed -i.bak '/^<!-- - \[/d' "$node_md" && rm -f "${node_md}.bak" 2>/dev/null || true
   fi
 
   # Extract the leaf's H1 title for the NODE.md bullet.

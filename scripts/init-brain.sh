@@ -227,7 +227,10 @@ if [[ -n "$DOMAIN" ]]; then
     -e "s|{{PRIMARY_PROJECT}}|${PROJECT_ALIAS}|g" \
     -e "s|{{NODE_DOMAIN}}|${DOMAIN}|g" \
     "${BRAIN_PATH}/tree/${DOMAIN}/NODE.md"
-  rm "${BRAIN_PATH}/tree/${DOMAIN}/NODE.md.bak"
+  # Best-effort .bak cleanup; some FUSE-mounted filesystems (Cowork's
+  # workspace mount, sandbox bind-mounts) deny unlink even for files
+  # we just created, so don't let the cleanup fail the whole scaffold.
+  rm -f "${BRAIN_PATH}/tree/${DOMAIN}/NODE.md.bak" 2>/dev/null || true
 fi
 
 # thread-index.md and current-state.md
@@ -237,7 +240,7 @@ for tpl in thread-index current-state; do
     -e "s|{{PRIMARY_PROJECT}}|${PROJECT_ALIAS}|g" \
     -e "s|{{PROJECT_TITLE}}|${PROJECT_TITLE}|g" \
     "${BRAIN_PATH}/${tpl}.md"
-  rm "${BRAIN_PATH}/${tpl}.md.bak"
+  rm -f "${BRAIN_PATH}/${tpl}.md.bak" 2>/dev/null || true
 done
 
 # CONVENTIONS.md — copy the pack's canonical copy verbatim. § 10

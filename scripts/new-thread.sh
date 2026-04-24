@@ -186,7 +186,9 @@ copy_with_substitutions() {
     -e "s|{{PRIMARY_PROJECT}}|${PRIMARY_PROJECT}|g" \
     -e "s|{{TREE_DOMAIN_OR_NULL}}|${TREE_DOMAIN_VALUE}|g" \
     "$dst"
-  rm -f "${dst}.bak"
+  # Best-effort cleanup; FUSE-mounted filesystems may deny unlink. Don't
+  # fail the scaffold over a leftover .bak.
+  rm -f "${dst}.bak" 2>/dev/null || true
 }
 
 copy_with_substitutions "${TEMPLATES}/thread.md"              "${THREAD_DIR}/thread.md"
