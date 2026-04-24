@@ -1,12 +1,10 @@
 ---
 name: promote-thread-to-tree
-description: Promote one or more decisions from an active thread into the shared knowledge tree via a pull request. Stages the leaves under project-brain/threads/[slug]/tree-staging/, cuts a promote/[slug] branch from the chosen base, copies the staged files into project-brain/tree/[domain]/, updates the parent NODE.md, opens a PR using assets/pr-body-templates/promote.md, and flips the thread to in-review while appending the PR URL to tree_prs. Use when the user says "promote this thread", "land these decisions", "open a promotion PR", or similar.
+description: "Promote one or more leaves from a thread into the shared tree/. Supports four modes — local (no git, no PR), git:pr (full PR flow), git:branch (branch+commit+push, user opens PR manually), git:manual (stage only, user runs git commands). Default is git:pr if gh is authed, else ask the user. Use when the user says 'promote this thread', 'land these decisions', 'finalize this decision locally', or similar."
 version: 1.0.0-rc4
 pack: project-brain
 requires:
-  - git
-  - gh
-  - "read:~/.config/project-brain/projects.yaml"
+  - "read:[brain-root]"
   - "write:[brain-root]"
 ---
 
@@ -61,7 +59,68 @@ The skill **refuses** if any of these are not met.
 
 ## Process
 
-Each step is atomic. Failure at any step leaves the repo in a recoverable state — either on `main` with nothing changed, or on the promote branch with a committed staging snapshot the user can inspect.
+### Mode dispatch
+
+Promotion supports four modes (CONVENTIONS § 4.2):
+
+| Mode          | What happens                                                                                              | When to use                                    |
+|---------------|-----------------------------------------------------------------------------------------------------------|------------------------------------------------|
+| `local`       | Stage → move to `tree/` → update NODE.md → rebuild indexes → optional local git commit. No branch, no PR. | Solo users, offline, or no GitHub              |
+| `git:pr`      | Full automation: branch + commit + push + `gh pr create`                                                  | Power users with git + gh set up (default)     |
+| `git:branch`  | Branch + commit + push, but PR creation is left to the user (print the `gh pr create` command)            | Team uses non-GitHub review (GitLab, self-hosted) |
+| `git:manual`  | Stage files on the promote branch locally, don't commit, don't push                                       | User wants full manual control over commits    |
+
+### Mode resolution
+
+1. If `--mode=<value>` was supplied, use it.
+2. Else read `<brain>/config.yaml` for `promote_mode_default`. If set, use it.
+3. Else probe git + gh readiness silently (all pure reads, no mutation): `git rev-parse --is-inside-work-tree`, `git config user.email`, `git remote get-url origin`, `gh auth status`.
+4. If all four probes succeed → auto-default to `git:pr` (no prompt; print a note).
+5. If any probe fails → present **one** `AskUserQuestion` with three options:
+
+   - **Stay local** (default): "Promote decisions into `tree/` as files. No git, no PR. You can set up git later."
+   - **Set up git**: print the exact commands the user should run (`git config --global user.email ...`, `gh auth login`, etc.), then exit without promoting. User re-invokes after setup.
+   - **Cancel**: exit cleanly.
+
+   If the user picks Stay local, proceed with `--mode=local` and offer to persist the preference via `--remember-mode` (writes `promote_mode_default: local` to `<brain>/config.yaml`).
+
+### Local mode path — ONE tool call
+
+For `--mode=local`, invoke the one-shot script:
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/scripts/promote-local.sh" \
+  --brain=<absolute brain path> \
+  --slug=<thread_slug>          \
+  [--leaves=<csv>]              \  # subset of staged leaves; omit for all
+  [--archive-thread]            \  # also move thread to archive/
+  [--no-commit]                 \  # skip the local git commit even if repo present
+  [--by=<email>]
+```
+
+Preconditions: leaves must already be staged at `threads/<slug>/tree-staging/<domain>/<leaf>.md`. If they aren't, run the staging step first (see "Staging" below), then call the script.
+
+After success the script prints landed paths, optional archive note, optional commit note, and `Done.`.
+
+### Git mode paths
+
+For `git:pr`, `git:branch`, `git:manual` — these orchestrate git commands directly because the staging-and-commit flow is inherently multi-step. The overall choreography stays as documented below (steps 1–11), with the final steps (branch push, `gh pr create`) conditional on mode:
+
+- `git:pr`: run all steps including push + `gh pr create`
+- `git:branch`: run through push; print the `gh pr create` command for the user to run
+- `git:manual`: stage files on the branch but don't commit/push; print `git add && git commit && git push && gh pr create` commands
+
+### Staging (shared by all modes)
+
+Before any mode can land leaves into `tree/`, the leaves have to exist at `threads/<slug>/tree-staging/<domain>/<leaf>.md`. In rc4 the LLM does this step directly from `decisions-candidates.md`:
+
+1. Read the thread's `decisions-candidates.md`. Present `locking` entries to the user via `AskUserQuestion` for selection (or accept `--leaves=<csv>` verbatim).
+2. For each selected leaf, instantiate `assets/leaf-template.md` into `tree-staging/<domain>/<leaf-slug>.md` with: `status: draft`, `domain: <domain>`, `source_thread: <slug>`, `owner: <actor>`, plus H1/Context/Decision/Consequences body drawn from the candidate entry.
+3. Run `verify-tree --path=threads/<slug>/tree-staging/` to catch frontmatter issues before landing.
+
+After staging, dispatch on mode as above.
+
+### Git-mode choreography (steps 1–11, conditional push/PR)
 
 0. **Environment readiness heads-up (rc4+).** Before running *any* git or gh command, probe the environment non-invasively and — if the user hasn't hit the promote path before — surface a summary of what's about to happen and what's missing. This step exists because rc4's pre-promote skills are git-free; the promote triad is the first time git / gh / a remote actually need to work, and users deserve a warning before the permission prompts start.
 
