@@ -287,6 +287,15 @@ aliases: {}
 # Operational knobs. Defaults shown.
 verbosity: terse
 transcript_logging: on
+
+# Promotion mode — unset means "ask on first promote".
+# Valid values (CONVENTIONS § 4.2):
+#   local       = move staged leaves into tree/, no branch, no PR
+#   git:pr      = branch + commit + push + gh pr create (needs git + gh)
+#   git:branch  = branch + commit + push; user opens the PR manually
+#   git:manual  = stage only; user runs git commands
+# Set this key to skip the mode prompt on subsequent promotions.
+promote_mode_default: null
 YAML
 
 # .gitignore — default to ignoring per-thread transcripts + attachments.

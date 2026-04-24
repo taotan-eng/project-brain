@@ -13,6 +13,17 @@ Every skill in the pack reads from this file. If you change the schema, update t
 
 The conventions are designed to be **generic**: a new project should be able to install the pack, run `init-project-brain`, fill in § 10 (project-specific), and get the full ideation → decision → hardening → impl-spec → build → delivery pipeline without writing any project-specific skill code.
 
+### Vocabulary
+
+The pack uses a few terms precisely throughout. When reading the spec or a skill description, assume these meanings:
+
+- **thread** — a thinking container about *one topic*. Lives at `threads/<slug>/`. Private-by-default, exploratory, possibly abandoned. Captured with `new-thread`; refined with `update-thread`.
+- **leaf** — *one atomic sub-decision* that came out of a thread, addressable as a single file at `tree/<domain>/<slug>.md`. A thread typically produces multiple related leaves (e.g., an "auth model" thread yields leaves for token type, session store, and logout behavior). Validator-enforced frontmatter contract (`id`, `title`, `status`, `domain`, `source_thread`).
+- **NODE.md** — the index file at each `tree/` directory level. Lists leaves in its directory and links to child nodes. Not a leaf itself.
+- **decision** — used as general English in prose ("the user decided to use JWT"). When a specific artifact is meant, the text says `thread`, `leaf`, or `NODE.md` instead. The `prior-decision` soft_link role is a specific jargon tag, not the generic word.
+- **promotion** — the act of moving selected leaves from `threads/<slug>/tree-staging/` into their final home at `tree/<domain>/`. The `promote-thread-to-tree` skill owns this transition and supports four modes (§ 4.5).
+- **artifact** (in the narrow sense) — a file under `threads/<slug>/artifacts/` capturing an intermediate output (debate rationale, benchmark, analysis). `kind: artifact` is a first-class classifier kind with its own frontmatter contract (§ 2.5.2). *Do not confuse with the generic validator use of "artifact" meaning "any markdown file in the brain."*
+
 ---
 
 ## 1. Directory layout
@@ -443,6 +454,32 @@ An impl-spec lives at `<leaf-dir>/impl-spec.md` and carries its own `status` fie
 | `stale`          | `multi-agent-debate` patches landed | Leaf flips back to `decided` until re-derived. |
 
 A leaf's status is always a function of its impl-spec's status at transitions marked above; at all other times the two move independently.
+
+### 4.5 Promotion modes
+
+`promote-thread-to-tree` supports four modes, chosen to match the user's git/review setup. The mode affects *how* leaves move from `threads/<slug>/tree-staging/` into `tree/<domain>/`, but not *what* ends up in the tree — the resulting `tree/` state is identical in every mode.
+
+| Mode          | Stages files | Creates branch | Commits | Pushes | Creates PR | Use when                                                 |
+|---------------|--------------|----------------|---------|--------|------------|----------------------------------------------------------|
+| `local`       | ✓            | —              | local, optional | — | —        | Solo users, offline, no GitHub. Review happens in your head. |
+| `git:pr`      | ✓            | ✓              | ✓       | ✓      | ✓ (`gh`)   | Power users with git + gh set up. Full automation.       |
+| `git:branch`  | ✓            | ✓              | ✓       | ✓      | —          | Team reviews outside GitHub (GitLab, self-hosted, Slack). |
+| `git:manual`  | ✓            | ✓              | —       | —      | —          | User wants full manual control over commits/pushes.      |
+
+**Mode resolution chain** (implemented by `promote-thread-to-tree`):
+
+1. If `--mode=<value>` is passed explicitly → use it.
+2. Else read `<brain>/config.yaml` for `promote_mode_default`. If set to one of the four values → use it.
+3. Else probe git + gh readiness silently (no mutations): `git rev-parse --is-inside-work-tree`, `git config user.email`, `git remote get-url origin`, `gh auth status`. All four pass → auto-default to `git:pr` and note the source in the output.
+4. Any probe fails → present one `AskUserQuestion` with three options:
+   - **Stay local** (default) — proceed with `--mode=local`.
+   - **Set up git** — print the exact commands the user should run (`git config --global user.email ...`, `gh auth login`, etc.), exit without promoting. User re-invokes after setup.
+   - **Cancel** — exit cleanly, no files touched.
+5. `--remember-mode` on any invocation persists the chosen mode into `config.yaml`'s `promote_mode_default` key, so subsequent promotions skip the question.
+
+**Why four modes, not two.** A naive "git vs no-git" split glosses over two common cases: teams using non-GitHub review (where `gh pr create` doesn't fit but git itself does), and power users who want Claude to do the file work but not touch `git commit`. The four-mode taxonomy lets each user pick the automation boundary they prefer; the resolution chain makes the default intelligent without forcing a prompt on someone who already has gh authed.
+
+**Local mode does not break the philosophy.** The pack's invariant is "markdown-first; git is a collaboration tool layered on top, not a prerequisite for thinking." A solo user without a GitHub account should be able to capture, refine, debate, and lock a decision without ever touching `git remote add`. `--mode=local` delivers that: `tree/` gets the same validator-clean leaves, `NODE.md` indexes stay consistent, and the `promoted_to`/`promoted_at` audit fields record where each leaf landed. If the user later connects a remote, the historical decisions are already present and pushable in one commit.
 
 ---
 
