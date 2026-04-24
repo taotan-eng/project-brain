@@ -43,46 +43,24 @@ Skill is pure read-only — no writes, no shell spawns beyond awk/sed/find — s
 
 ## Process
 
-> ### ⛔️ HARD CONSTRAINT FOR THE AGENT
+> ### ⛔️ HARD CONSTRAINT — ONE TOOL CALL
 >
-> **All rendering happens inside `${CLAUDE_PLUGIN_ROOT}/scripts/review-thread.sh` — a single Bash tool call.** You, the agent, **MUST NOT**:
+> **Call `${CLAUDE_PLUGIN_ROOT}/scripts/review-thread.sh` ONCE.** No `Read` of thread.md, transcript.md, or artifacts — the script parses and renders everything. Pass stdout through verbatim.
 >
-> - Read `thread.md` yourself to extract frontmatter. The script parses it.
-> - Read `transcript.md` yourself to count entries. The script counts them.
-> - Read every `artifacts/*.md` file to pull titles. The script does it.
->
-> **You MUST call `${CLAUDE_PLUGIN_ROOT}/scripts/review-thread.sh` exactly once and pass its stdout through verbatim.** `CLAUDE_PLUGIN_ROOT` is the env var Claude Code exports for plugin skills. Do not strip it off; the bare `scripts/review-thread.sh` resolves against the skill's own directory and fails.
->
-> If you find yourself typing `Read .../thread.md` or `Read .../transcript.md` to answer a "what's in this thread?" question — STOP. Call the script.
+> **Derive `--full` / `--last` / `--since` from phrasing:** "show me the full transcript" → `--full`. "what happened last week" → `--since=<computed>`. Otherwise default (summary + last 3 entries).
 
-Steps in order:
+**One call:**
 
-1. **Resolve slug.** Infer from cwd (nearest ancestor under `threads/` or `archive/`). If ambiguous, ask once via `AskUserQuestion`.
+```bash
+"${CLAUDE_PLUGIN_ROOT}/scripts/review-thread.sh" \
+  --brain=<absolute brain path> \
+  --slug=<thread-slug>          \
+  [--full]                      \
+  [--last=<N>]                  \
+  [--since=<ISO8601>]
+```
 
-2. **Call the script. This is the ONLY tool call.**
-
-   ```bash
-   "${CLAUDE_PLUGIN_ROOT}/scripts/review-thread.sh" \
-     --brain=<absolute brain path> \
-     --slug=<thread-slug>          \
-     [--full]                      \
-     [--last=<N>]                  \
-     [--since=<ISO8601>]
-   ```
-
-   What the script does internally:
-
-   - Locates the thread in `threads/` then `archive/`.
-   - Parses `thread.md` frontmatter (via awk, no PyYAML needed).
-   - Counts list items in `open-questions.md` and `decisions-candidates.md`.
-   - Enumerates `artifacts/*.md` and pulls each one's `title` + `artifact_kind` frontmatter.
-   - Enumerates `attachments/*` with byte size.
-   - Counts transcript H2 entries, grabs the last timestamp.
-   - Renders the summary to stdout.
-   - With `--full`: dumps entire transcript.md verbatim.
-   - Without `--full`: renders the last N entries (or --since-filtered), preserving block structure.
-
-3. **Report.** Pass the script's stdout through verbatim. Do not add commentary unless the user asks a follow-up question about the content.
+Infer `--slug` from cwd; only ask if the user is outside any thread dir and didn't name one. After success, passthrough stdout verbatim — no commentary unless the user asks a follow-up.
 
 ### Dry-run semantics
 

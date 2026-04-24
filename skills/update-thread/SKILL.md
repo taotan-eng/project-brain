@@ -58,39 +58,31 @@ The skill **refuses** if any of these are not met.
 
 ## Process
 
-> ### ⛔️ HARD CONSTRAINT FOR THE AGENT
+> ### ⛔️ HARD CONSTRAINT — ONE TOOL CALL
 >
-> **All mechanical file operations happen inside `${CLAUDE_PLUGIN_ROOT}/scripts/update-thread.sh` — a single Bash tool call.** You, the agent, **MUST NOT**:
+> **Call `${CLAUDE_PLUGIN_ROOT}/scripts/update-thread.sh` ONCE.** No `Read` of thread.md, no pre-validation, no `git` calls. The script reads frontmatter, applies the operation, rebuilds indexes. React to its exit code.
 >
-> - Read the existing thread.md via `Read` to eyeball the frontmatter. The script does that.
-> - Run `Write .../thread.md` with edited frontmatter yourself as separate tool calls. The script does it.
+> **Derive `--operation` + operation-specific fields from language.**
+> - "Lock this thread" / "bump to locking" → `--operation=refine --target=locking`
+> - "Link thread X to Y" → `--operation=soft-link-add --url=<uri>`
+> - "Merge this into the Y thread" → `--operation=merge-into --merge-into-slug=y`
+> - "Prep this for promotion" → `--operation=promote-prep`
 >
-> - Invoke `verify-tree --rebuild-index` yourself. The script runs it internally after the frontmatter flip.
->
-> **You MUST call `${CLAUDE_PLUGIN_ROOT}/scripts/update-thread.sh` exactly once, with appropriate flags, and nothing else in the mechanical path.** `CLAUDE_PLUGIN_ROOT` is the env var Claude Code exports for plugin skills; it resolves to this pack's install root. **Do not** strip it off and call `scripts/update-thread.sh` bare — the relative path would resolve against the skill's own directory and fail. Each individual tool call triggers a permission prompt + full-content diff in the agent UI. The script completes in ~110ms.
->
-> If you find yourself typing any of: `Read .../threads/`, `Write .../threads/`, `Edit .../thread.md` — STOP. You are improvising. The single correct Bash call is described below.
+> Only use `AskUserQuestion` if the user's wording is truly ambiguous.
 
+**One call:**
 
-Each step is atomic. Failure at step N leaves the tree in whatever state it was after step N-1; `git restore` returns you to pre-skill state cleanly.
+```bash
+"${CLAUDE_PLUGIN_ROOT}/scripts/update-thread.sh" \
+  --brain=<absolute brain path> \
+  --slug=<thread_slug>          \
+  --operation=<op>              \    # refine | lock | merge-into | soft-link-add | soft-link-remove | promote-prep
+  [--target=<target>]           \    # for refine: exploring|refining|locking
+  [--merge-into-slug=<slug>]    \    # for merge-into
+  [--url=<uri>]                      # for soft-link-add/remove
+```
 
-1. **Resolve inputs.** Infer `thread_slug` from cwd. Ask for `operation` and any operation-specific fields via `AskUserQuestion`.
-2. **Validate preconditions.** Run checks 1–10 (subset per operation). On any failure, stop and report the specific precondition.
-3. **Execute one-shot script.** Invoke the update-thread script in a single Bash call:
-
-   ```bash
-   "${CLAUDE_PLUGIN_ROOT}/scripts/update-thread.sh" \
-     --brain=<absolute brain path> \
-     --slug=<thread_slug>          \
-     --operation=<op>              \  # refine | lock | merge-into | soft-link-add | soft-link-remove | promote-prep
-     [--target=<target>]           \  # for refine: exploring|refining|locking
-     [--merge-into-slug=<slug>]    \  # for merge-into
-     [--url=<uri>]                    # for soft-link-add/remove
-   ```
-
-   The script handles operation-specific mutations (maturity flip, soft_links add/remove, body edits), rebuilds indexes, and validates. One permission prompt and ~120ms of execution, replacing the previous 8 individual steps (Resolve + Validate + Operation apply + Body edits + Index rebuild × 2 + Transcript + Report).
-
-4. **Report.** Passthrough the script's terse output.
+Infer `--slug` from cwd. After success, passthrough stdout verbatim.
 
 ### Dry-run semantics
 

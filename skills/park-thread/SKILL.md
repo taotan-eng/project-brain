@@ -55,39 +55,25 @@ The skill **refuses** if any of these are not met.
 
 ## Process
 
-> ### ⛔️ HARD CONSTRAINT FOR THE AGENT
+> ### ⛔️ HARD CONSTRAINT — ONE TOOL CALL
 >
-> **All mechanical file operations happen inside `${CLAUDE_PLUGIN_ROOT}/scripts/park-thread.sh` — a single Bash tool call.** You, the agent, **MUST NOT**:
+> **Call `${CLAUDE_PLUGIN_ROOT}/scripts/park-thread.sh` ONCE.** No `Read` of thread.md, no pre-flight status check. The script reads frontmatter, determines park vs unpark (from the thread's current `status` or `--unpark` flag), validates, mutates, rebuilds indexes.
 >
-> - Read the existing thread.md via `Read` to eyeball the frontmatter. The script does that.
-> - Run `Write .../thread.md` with edited frontmatter yourself as separate tool calls. The script does it.
->
-> - Invoke `verify-tree --rebuild-index` yourself. The script runs it internally after flipping the frontmatter.
->
-> **You MUST call `${CLAUDE_PLUGIN_ROOT}/scripts/park-thread.sh` exactly once, with appropriate flags, and nothing else in the mechanical path.** `CLAUDE_PLUGIN_ROOT` is the env var Claude Code exports for plugin skills; it resolves to this pack's install root. **Do not** strip it off and call `scripts/park-thread.sh` bare — the relative path would resolve against the skill's own directory and fail. Each individual tool call triggers a permission prompt + full-content diff in the agent UI. The script completes in ~110ms.
->
-> If you find yourself typing any of: `Read .../threads/`, `Write .../threads/`, `Edit .../thread.md` — STOP. You are improvising. The single correct Bash call is described below.
+> **Derive mode + reason/trigger from language.** "Park this for now, waiting on X" → `--reason='waiting on X'`. "Pick this back up — X just landed" → `--unpark --trigger='X landed'`. Don't ask.
 
+**One call:**
 
-Each step is atomic. Failure at step N leaves the tree in whatever state it was after step N-1.
+```bash
+"${CLAUDE_PLUGIN_ROOT}/scripts/park-thread.sh" \
+  --brain=<absolute brain path> \
+  --slug=<thread_slug>          \
+  --reason='<reason>'           \    # park mode
+  [--unpark]                    \    # unpark mode (alternative)
+  [--trigger='<trigger>']       \    # optional unpark trigger description
+  [--by=<email>]
+```
 
-1. **Resolve inputs.** Infer `thread_slug` from cwd. Determine `mode` (flag or inferred from status). Prompt for operation-specific fields.
-2. **Validate preconditions.** Run the subset for the chosen mode. On any failure, stop and report the specific precondition.
-3. **Execute one-shot script.** Invoke the park-thread script in a single Bash call:
-
-   ```bash
-   "${CLAUDE_PLUGIN_ROOT}/scripts/park-thread.sh" \
-     --brain=<absolute brain path> \
-     --slug=<thread_slug>          \
-     --reason='<reason>'           \  # for park mode
-     [--unpark]                    \  # optional flag for unpark mode
-     [--by=<email>]                \  # optional actor email
-     [--trigger='<trigger>']          # optional unpark trigger
-   ```
-
-   The script handles frontmatter mutation (flip status, add/remove park metadata), rebuilds indexes, and validates. One permission prompt and ~100ms of execution, replacing the previous 7 individual steps (Read + Frontmatter flip + Timestamp capture + Body append + Transcript append + Index rebuild + Report).
-
-4. **Report.** Passthrough the script's terse output.
+Infer `--slug` from cwd. After success, passthrough stdout verbatim.
 
 ### Dry-run semantics
 

@@ -48,37 +48,25 @@ The skill **refuses** if any of these are not met.
 
 ## Process
 
-> ### ⛔️ HARD CONSTRAINT FOR THE AGENT
+> ### ⛔️ HARD CONSTRAINT — ONE TOOL CALL
 >
-> **All mechanical file operations happen inside `${CLAUDE_PLUGIN_ROOT}/scripts/discard-thread.sh` — a single Bash tool call.** You, the agent, **MUST NOT**:
+> **Call `${CLAUDE_PLUGIN_ROOT}/scripts/discard-thread.sh` ONCE.** No `Read` of thread.md, no pre-check of `tree_prs`, no `mv`, no `Edit` of frontmatter. The script reads frontmatter, validates preconditions (including `tree_prs` empty), flips status, moves the dir to archive/, rebuilds indexes. React to its exit code, not to pre-checks.
 >
-> - Read the existing thread.md via `Read` to eyeball the frontmatter. The script does that.
-> - Run `Write .../thread.md` with edited frontmatter yourself as separate tool calls. The script does it.
-> - Run `mv threads/<slug> archive/<slug>` yourself as a Bash call. The script does the move.
-> - Invoke `verify-tree --rebuild-index` yourself. The script runs it internally after the move + flip.
->
-> **You MUST call `${CLAUDE_PLUGIN_ROOT}/scripts/discard-thread.sh` exactly once, with appropriate flags, and nothing else in the mechanical path.** `CLAUDE_PLUGIN_ROOT` is the env var Claude Code exports for plugin skills; it resolves to this pack's install root. **Do not** strip it off and call `scripts/discard-thread.sh` bare — the relative path would resolve against the skill's own directory and fail. Each individual tool call triggers a permission prompt + full-content diff in the agent UI. The script completes in ~110ms.
->
-> If you find yourself typing any of: `Read .../threads/`, `Write .../threads/`, `Edit .../thread.md` — STOP. You are improvising. The single correct Bash call is described below.
+> **Derive `--reason` from context.** The user likely already said WHY they're discarding ("this approach didn't pan out", "dupe of X"). Use that as the reason. Only ask via `AskUserQuestion` if the message gives no reason at all.
 
+**One call:**
 
-Each step is atomic. Failure at step N leaves the tree in whatever state it was after step N-1.
+```bash
+"${CLAUDE_PLUGIN_ROOT}/scripts/discard-thread.sh" \
+  --brain=<absolute brain path> \
+  --slug=<thread_slug>          \
+  --reason='<derived or asked>' \
+  [--by=<email>]
+```
 
-1. **Resolve inputs.** Infer `thread_slug` from cwd. Prompt for `discard_reason`.
-2. **Validate preconditions.** Run checks 1–8. If `tree_prs` is non-empty (precondition 4 fails), run `gh pr view` on the most recent entry and report which sibling skill to use. On any other failure, stop and name the precondition.
-3. **Execute one-shot script.** Invoke the discard-thread script in a single Bash call:
+Infer `--slug` from cwd. If the script exits non-zero citing `tree_prs`, use `discard-promotion` instead — the error message will point there.
 
-   ```bash
-   "${CLAUDE_PLUGIN_ROOT}/scripts/discard-thread.sh" \
-     --brain=<absolute brain path> \
-     --slug=<thread_slug>          \
-     --reason='<discard_reason>'   \
-     [--by=<email>]                  # optional actor email
-   ```
-
-   The script handles frontmatter mutation (flip status, remove maturity, add archive metadata), moves the directory from threads/ to archive/, rebuilds indexes, and validates. One permission prompt and ~150ms of execution, replacing the previous 8 individual steps (Read + Frontmatter flip + Timestamp + Remove maturity + Directory move + Transcript append + Index rebuild + Report).
-
-4. **Report.** Passthrough the script's terse output.
+After success, **report.** Passthrough stdout verbatim.
 
 ### Dry-run semantics
 

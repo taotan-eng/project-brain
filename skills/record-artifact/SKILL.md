@@ -48,58 +48,42 @@ The script routes markdown inputs to `artifacts/` (frontmatter is injected, V-06
 
 ## Process
 
-> ### ⛔️ HARD CONSTRAINT FOR THE AGENT
+> ### ⛔️ HARD CONSTRAINT — ONE TOOL CALL
 >
-> **All mechanical file operations happen inside `${CLAUDE_PLUGIN_ROOT}/scripts/record-artifact.sh` — a single Bash tool call.** You, the agent, **MUST NOT**:
+> **Call `${CLAUDE_PLUGIN_ROOT}/scripts/record-artifact.sh` ONCE.** No `mkdir`, no `Write` of artifact files, no `Edit` of transcript.md, no `verify-tree` call. The script routes markdown to `artifacts/` (with frontmatter injected), non-markdown to `attachments/`, always appends a transcript breadcrumb, and validates.
 >
-> - `mkdir` the `artifacts/` or `attachments/` directory yourself. The script does it.
-> - `Write` an artifact file with frontmatter you assembled. The script injects frontmatter from `assets/artifact-template.md` with the right `id`, `created_at`, `source_thread`, and `artifact_kind`.
-> - `Edit` transcript.md yourself to add a breadcrumb. The script appends it atomically after the write.
-> - Invoke `verify-tree --rebuild-index` yourself. The script runs it internally as a post-write validation gate.
+> **Derive title, slug, and artifact_kind from context:**
+> - `--slug` from cwd (nearest `threads/<slug>/` ancestor)
+> - `--title` from the user's own framing ("log the debate result" + the content → "JWT vs session rationale")
+> - `--artifact-kind` from language: "debate result" → `debate`, "benchmark output" → `benchmark`, "analysis" → `analysis`. Default `artifact` if nothing obvious.
 >
-> **You MUST call `${CLAUDE_PLUGIN_ROOT}/scripts/record-artifact.sh` exactly once, with appropriate flags, and nothing else in the mechanical path.** `CLAUDE_PLUGIN_ROOT` is the env var Claude Code exports for plugin skills; it resolves to this pack's install root. **Do not** strip it off and call `scripts/record-artifact.sh` bare — the relative path resolves against the skill's own directory and fails.
->
-> If you find yourself typing any of: `mkdir .../artifacts`, `Write .../artifacts/`, `Edit .../transcript.md` — STOP. You are improvising. The single correct Bash call is in Step 2 below.
+> Only use `AskUserQuestion` if slug OR title genuinely can't be inferred.
 
-Steps in order:
+**Default mode** (new separate file):
 
-1. **Resolve inputs (pre-script).** Infer `slug` from cwd. Ask via `AskUserQuestion` for `title` if not already in the conversation. Infer `artifact_kind` from context (`debate` if the user said "debate", `benchmark` for performance outputs, `analysis` for written reasoning, etc.). Decide body source: if the conversation already contains the markdown text, pass it via `--content`; if the user handed you a file path, pass `--file`. For multi-file ingestion, call the script once with multiple `--file` flags, not multiple script invocations.
+```bash
+"${CLAUDE_PLUGIN_ROOT}/scripts/record-artifact.sh" \
+  --brain=<absolute brain path> \
+  --slug=<thread-slug>          \
+  --title='<title>'             \
+  --content='<markdown body>'   \    # or --file=<path> [--file=<path>]... or --stdin
+  [--artifact-kind=<label>]     \
+  [--by=<email>]
+```
 
-2. **Call the script. This is the ONLY mechanical tool call.**
+**Append mode** (straight into transcript.md, no separate file):
 
-   Default mode (markdown body written to artifacts/, or file routed by extension):
+```bash
+"${CLAUDE_PLUGIN_ROOT}/scripts/record-artifact.sh" \
+  --brain=<absolute brain path> \
+  --slug=<thread-slug>          \
+  --title='<title>'             \
+  --content='<text>'            \
+  --append                      \
+  [--by=<email>]
+```
 
-   ```bash
-   "${CLAUDE_PLUGIN_ROOT}/scripts/record-artifact.sh" \
-     --brain=<absolute brain path> \
-     --slug=<thread-slug>          \
-     --title='<title>'             \
-     --content='<markdown body>'   \    # or --file=<path> [--file=<path>]... or --stdin
-     [--artifact-kind=<label>]     \
-     [--by=<email>]
-   ```
-
-   Append mode (content written straight into transcript.md, no separate file):
-
-   ```bash
-   "${CLAUDE_PLUGIN_ROOT}/scripts/record-artifact.sh" \
-     --brain=<absolute brain path> \
-     --slug=<thread-slug>          \
-     --title='<title>'             \
-     --content='<text>'            \    # or --file=<path> or --stdin
-     --append                      \
-     [--by=<email>]
-   ```
-
-   What the script does internally (for your understanding — you don't replicate):
-
-   - Validates the thread exists; refuses if `threads/<slug>/` and `archive/<slug>/` both miss.
-   - In default mode: for each body source, routes `.md` to `artifacts/NNNN-<title-slug>.md` with auto-numbered prefix + injected frontmatter (`id`, `kind: artifact`, `source_thread`, `artifact_kind`, `created_at`, `created_by`, `title`); routes non-markdown files to `attachments/`. Preserves sensible filenames; renames obvious tempfiles using the title slug.
-   - Appends a breadcrumb H2 block to `transcript.md` listing every created path.
-   - Runs `verify-tree --rebuild-index` as a post-write gate. If validation reports errors, the script exits 1 with a diagnostic pointer — the artifact is still on disk but the brain isn't clean.
-   - In `--append` mode: writes directly into `transcript.md` under a new `## <timestamp> — <title>` block. No separate file. No rebuild (transcript is kind=transcript and V-06 exempt).
-
-3. **Report.** Pass through the script's stdout verbatim. Don't editorialize.
+After success, passthrough stdout verbatim. If the script exits 1 citing post-write validation errors, tell the user to run `verify-tree` for specifics.
 
 ### Dry-run semantics
 

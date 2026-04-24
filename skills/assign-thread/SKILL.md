@@ -57,38 +57,28 @@ The skill **refuses** if any of these are not met.
 
 ## Process
 
-> ### ⛔️ HARD CONSTRAINT FOR THE AGENT
+> ### ⛔️ HARD CONSTRAINT — ONE TOOL CALL
 >
-> **All mechanical file operations happen inside `${CLAUDE_PLUGIN_ROOT}/scripts/assign-thread.sh` — a single Bash tool call.** You, the agent, **MUST NOT**:
+> **Call `${CLAUDE_PLUGIN_ROOT}/scripts/assign-thread.sh` ONCE.** No `Read` of thread.md, no pre-validation, no `AskUserQuestion` about operation mode when the user's own sentence already reveals it. The script reads thread.md, validates preconditions, mutates frontmatter, appends the audit line, rebuilds indexes, and exits with a clear error if anything fails. You react to the exit code, not to checks you do first.
 >
-> - Read the existing thread.md via `Read` to eyeball the `assigned_to` list. The script does that.
-> - Run `Write .../thread.md` with an appended audit line yourself as separate tool calls. The script does it.
+> **Derive the operation from language.** "Assign X to bob" → `--add bob`. "Unassign bob from X" → `--remove bob`. "Who's on X?" → use `review-thread`, not this. Only use `AskUserQuestion` if the user's message leaves the mode genuinely ambiguous.
 >
-> - Invoke `verify-tree --rebuild-index` yourself. The script runs it internally after the assigned_to flip + audit-line append.
->
-> **You MUST call `${CLAUDE_PLUGIN_ROOT}/scripts/assign-thread.sh` exactly once, with appropriate flags, and nothing else in the mechanical path.** `CLAUDE_PLUGIN_ROOT` is the env var Claude Code exports for plugin skills; it resolves to this pack's install root. **Do not** strip it off and call `scripts/assign-thread.sh` bare — the relative path would resolve against the skill's own directory and fail. Each individual tool call triggers a permission prompt + full-content diff in the agent UI. The script completes in ~110ms.
->
-> If you find yourself typing any of: `Read .../threads/`, `Write .../threads/`, `Edit .../thread.md` — STOP. You are improvising. The single correct Bash call is described below.
+> Strip `${CLAUDE_PLUGIN_ROOT}` and the bare path resolves against the skill's own dir → "no such file". Keep it.
 
+**One call:**
 
-Each step is atomic. Failure at step N leaves the tree in whatever state it was after step N-1.
+```bash
+"${CLAUDE_PLUGIN_ROOT}/scripts/assign-thread.sh" \
+  --brain=<absolute brain path> \
+  --slug=<thread_slug>          \
+  --add=<handles>               \  # or --remove, --set, --clear — pick from user's language
+  [--actor=<email>]             \  # default: TODO@example.com placeholder
+  [--note='<note>']
+```
 
-1. **Resolve inputs.** Infer `thread_slug` from cwd. If `operation` is not a flag, ask via `AskUserQuestion` which of the four modes to run. Prompt for operation-specific inputs (`handles`, `note`). Infer `actor` from the `--actor` flag; default to literal `TODO@example.com`. **Do NOT invoke `git config`** — rc4 defers git to promote-time.
-2. **Validate preconditions.** Run checks 1–10 above. On any failure, stop and report the specific precondition.
-3. **Execute one-shot script.** Invoke the assign-thread script in a single Bash call:
+Infer `--slug` from cwd (nearest `threads/<slug>/` ancestor). Only ask the user for it if they're invoking assign-thread without any thread context. The script completes in ~110ms; it replaces 8 individual steps (load/compute/mutate/append/rebuild/report).
 
-   ```bash
-   "${CLAUDE_PLUGIN_ROOT}/scripts/assign-thread.sh" \
-     --brain=<absolute brain path> \
-     --slug=<thread_slug>          \
-     --add=<handles>               \  # one of: --add, --remove, --set, --clear
-     [--actor=<email>]             \  # optional actor email
-     [--note='<note>']                # optional explanation
-   ```
-
-   The script handles frontmatter mutation (`assigned_to` field), appends the audit-trail line to the body's `## Assignment history` section, rebuilds indexes, and validates. One permission prompt and ~110ms of execution, replacing the previous 8 individual steps (Load + Compute new value + Update frontmatter + Append audit + Rebuild + Report).
-
-4. **Report.** Passthrough the script's terse output.
+After success, **report.** Passthrough the script's stdout verbatim.
 
 Suggested follow-up commit (the user runs this themselves):
 
