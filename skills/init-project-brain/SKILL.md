@@ -55,7 +55,7 @@ The skill is deliberately opinionated at a few points: it pre-scaffolds top-leve
 | `remotes`           | **`--init-git` only** — `git remote -v` + user prompt | conditional | List of remotes the brain repo may push to. Only collected when `--init-git` is passed. In the default flow the registry entry (if written at all) omits the `remotes:` block and promote-time fills it in. |
 | `default_remote`    | **`--init-git` only** — user prompt | conditional | Required when `remotes` has >1 entry; defaults to the sole entry otherwise. Default flow skips. |
 | `default_base_per_remote` | **`--init-git` only** — user prompt | conditional | Per-remote default base branch (usually `main` or `master`). Default flow skips.   |
-| `domain_taxonomy`   | user prompt                     | yes      | § 10.1 top-level domains as a line-separated list (e.g. `engineering / product / operations`). 1–8 entries. |
+| `domain_taxonomy`   | user prompt                     | no       | § 10.1 top-level domains. **Optional, no default.** Domains emerge on demand when `promote-thread-to-tree` lands the first leaf into a new domain — the tree starts flat at init. Pass a list (1–8 entries) only if you want to pre-create domain `NODE.md` skeletons. |
 | `debate_personas`   | user prompt                     | no       | § 10.2 reviewer personas. Default empty — easy to add later by hand-editing `CONVENTIONS.md`. |
 | `build_toolchain`   | user prompt                     | no       | § 10.3 test/lint/build commands. Default empty.                                           |
 | `owner`             | `--owner <email>` flag, else the literal placeholder `TODO@example.com` (with a visible TODO marker in CONVENTIONS § 10). If `--init-git` is set, `$EMAIL` and `git config user.email` are also consulted as intermediate fallbacks. **No shell invocation in the default flow.** | yes      | Who ran init; recorded as thread owner, registry entry, etc.                              |
@@ -67,7 +67,7 @@ The skill is deliberately opinionated at a few points: it pre-scaffolds top-leve
 - `owner` (default flow): the **literal placeholder string `TODO@example.com`**. A visible TODO marker is prepended to CONVENTIONS.md § 10 naming what needs to change (see Process step 4). **The default flow does NOT invoke `git`, does NOT read `$EMAIL`, does NOT read `$USER`, does NOT run any shell command to guess who the user is.** The user fixes the placeholder when they feel like it — at first commit, or at first promote (where a real identity is needed anyway and the promote-time heads-up will remind them). Rationale: even reading env vars requires a `bash` invocation in agentic IDEs, which triggers a permission prompt. The user's mental model for install is "setup → Done, no questions, no prompts." We honor that by not trying to be smart about identity.
 - `owner` (with `--owner <email>`): use the supplied email verbatim. No TODO marker in § 10.
 - `owner` (with `--init-git`): `$EMAIL` → `git config user.email` → `TODO@example.com` TODO fallback. Env var and git consultation are OK here because `--init-git` is already invoking the shell and git for `init` + `commit`.
-- `domain_taxonomy`: `engineering`. A single default domain. User adds more by hand-editing CONVENTIONS.md § 10.1 or re-runs with `--interactive`.
+- `domain_taxonomy`: **empty by default — no domain folders are pre-created.** The tree starts flat (`tree/.gitkeep` only). Domains emerge organically when `promote-thread-to-tree` lands the first leaf into one — the user names the domain at promote-time, not at init. This avoids saddling fresh installs with an arbitrary "engineering" or "product" folder that may not match the user's actual structure.
 
 **Prompt strategy:** Default invocation asks zero interactive questions AND runs zero shell commands. With `--interactive` flag, one call collects `project_alias` + `project_title` + `owner` + `domain_taxonomy`. Remote/base confirmation and persona/toolchain setup happen only with `--interactive`.
 
@@ -183,7 +183,7 @@ With `--init-git`:
 - `brain_path` — absolute path to `project-brain/`.
 - `bootstrap_commit` — SHA of the scaffolding commit.
 - `project_alias` — alias registered in `projects.yaml`.
-- `scaffolded_domains` — list of paths like `tree/engineering/NODE.md`.
+- `scaffolded_domains` — list of paths like `tree/<domain>/NODE.md`. Empty in the default flow (tree starts flat); only populated when the user explicitly passed `--domain=<slug>` or invoked with `--interactive` and named domains.
 
 ## Frontmatter flips
 

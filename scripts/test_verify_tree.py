@@ -1228,5 +1228,85 @@ class PromoteLocalTests(BaseTest):
         self.assertIn("real-leaf", r.stderr + r.stdout)
 
 
+class RestoreThreadTests(BaseTest):
+    """restore-thread.sh — inverse of discard-thread. Validates the
+    archive-→active round-trip end-to-end + the negative paths."""
+
+    DISCARD = HERE / "discard-thread.sh"
+    RESTORE = HERE / "restore-thread.sh"
+
+    def _run(self, script, brain, *args):
+        return subprocess.run(
+            ["bash", str(script), "--brain", str(brain), *args],
+            capture_output=True, text=True,
+        )
+
+    def _setup_archived(self, brain, slug="doomed"):
+        make_thread(brain, slug, status="active", maturity="refining")
+        r = self._run(self.DISCARD, brain, "--slug", slug, "--reason", "test")
+        assert r.returncode == 0, r.stderr
+        return slug
+
+    def test_restore_basic_roundtrip(self):
+        brain = make_brain(self.tmp_path)
+        slug = self._setup_archived(brain)
+        r = self._run(self.RESTORE, brain, "--slug", slug)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("Done.", r.stdout)
+        self.assertTrue((brain / "threads" / slug / "thread.md").exists())
+        self.assertFalse((brain / "archive" / slug).exists())
+        text = (brain / "threads" / slug / "thread.md").read_text()
+        self.assertIn("status: active", text)
+        self.assertIn("maturity: refining", text)
+        # Archive metadata stripped from frontmatter
+        self.assertNotIn("archived_at", text)
+        self.assertNotIn("archived_by", text)
+        self.assertNotIn("discard_reason", text)
+        # Audit comment preserved in body
+        self.assertIn("restored from archive", text)
+        code, data, *_ = run_validator(brain)
+        self.assertEqual(code, 0, data.get("errors"))
+
+    def test_restore_with_explicit_maturity(self):
+        brain = make_brain(self.tmp_path)
+        slug = self._setup_archived(brain)
+        r = self._run(self.RESTORE, brain, "--slug", slug, "--maturity", "exploring")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        text = (brain / "threads" / slug / "thread.md").read_text()
+        self.assertIn("maturity: exploring", text)
+
+    def test_restore_with_reason(self):
+        brain = make_brain(self.tmp_path)
+        slug = self._setup_archived(brain)
+        r = self._run(self.RESTORE, brain, "--slug", slug,
+                      "--reason", "team revived this scope")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        text = (brain / "threads" / slug / "thread.md").read_text()
+        self.assertIn("team revived this scope", text)
+
+    def test_restore_nonexistent_errors(self):
+        brain = make_brain(self.tmp_path)
+        r = self._run(self.RESTORE, brain, "--slug", "ghost")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("archived thread not found", r.stderr + r.stdout)
+
+    def test_restore_collision_errors(self):
+        brain = make_brain(self.tmp_path)
+        slug = self._setup_archived(brain)
+        # Create a NEW active thread with the same slug while the original
+        # sits in archive/.
+        make_thread(brain, slug, status="active", maturity="exploring")
+        r = self._run(self.RESTORE, brain, "--slug", slug)
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("target already exists", r.stderr + r.stdout)
+
+    def test_restore_invalid_maturity_errors(self):
+        brain = make_brain(self.tmp_path)
+        slug = self._setup_archived(brain)
+        r = self._run(self.RESTORE, brain, "--slug", slug,
+                      "--maturity", "bogus")
+        self.assertEqual(r.returncode, 2)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

@@ -1,6 +1,6 @@
 ---
 name: discard-promotion
-description: Close out a promote PR that was closed without merging. Verifies the PR state via gh, reverts the thread on main from in-review back to active/refining without touching tree_prs (the closed URL stays as audit per CONVENTIONS section 4.1), updates thread-index.md and current-state.md accordingly, and optionally deletes the promote branch on the remote. Does NOT flip any leaf status since leaves never reached main. Use when the user says "discard this promotion", "the PR was closed not merged", "cancel the promotion", or after observing a promote PR close without a merge commit.
+description: Revert a promote PR back to active so the thread becomes editable again. Handles both cases — PR was closed by reviewers (rejected/abandoned), or the user wants to cancel a still-OPEN PR mid-review to keep editing the thread. For OPEN PRs, the skill runs `gh pr close --delete-branch` itself before reverting; for already-closed PRs it just verifies state and reverts. Reverts thread on main from in-review back to active/refining without touching tree_prs (the closed URL stays as audit per CONVENTIONS section 4.1). Does NOT flip any leaf status since leaves never reached main. Use when the user says "discard this promotion", "cancel the promotion", "I want to edit the in-review thread", or after observing a promote PR close without a merge commit.
 version: 1.0.0-rc4
 pack: project-brain
 requires:
@@ -42,7 +42,7 @@ The skill **refuses** if any of these are not met.
 
 1. Current working directory is inside a brain root (§ 1). Resolved via `project-brain/CONVENTIONS.md`.
 2. `gh` is on PATH and authenticated for the host in `pr_url`.
-3. `gh pr view [pr_url] --json state,mergedAt,closedAt` returns `state: "CLOSED"` with `mergedAt: null` and a non-null `closedAt`. A MERGED state routes to `finalize-promotion` (refuse with pointer); an OPEN state means the PR is still live (refuse, ask user to close it first on GitHub).
+3. `gh pr view [pr_url] --json state,mergedAt,closedAt` returns either `state: "CLOSED"` with `mergedAt: null` (PR was rejected or abandoned externally) **or** `state: "OPEN"` (user-initiated cancel — they want to back out mid-review to make further edits to the thread). A MERGED state routes to `finalize-promotion` (refuse with pointer). When state is OPEN, the skill closes the PR itself via `gh pr close <pr_url> --delete-branch=<delete_branch>` before proceeding with the revert. The user-initiated-cancel path is the canonical edit-mid-review escape hatch — see CONVENTIONS § 4.1 for why this is preferred over selectively loosening update-thread's gate.
 4. Main is checked out with a clean working tree (`git status --porcelain` empty).
 5. Main has been fetched from the remote (`git fetch [default_remote]`) and is at or ahead of `[default_remote]/main`. If behind, run `git pull --ff-only`; refuse if fast-forward isn't possible.
 6. `project-brain/threads/[thread_slug]/thread.md` exists with `status: in-review` and `pr_url ∈ tree_prs`.
@@ -53,7 +53,8 @@ The skill **refuses** if any of these are not met.
 Each step is atomic. Failure at step N leaves main in whatever state it was after step N-1.
 
 1. **Resolve inputs.** Infer `thread_slug` from cwd. Resolve `pr_url` from `tree_prs` unfinalized entries. Query `gh pr view` for state metadata.
-2. **Validate preconditions.** Run checks 1–7. On any failure, stop and report the specific precondition.
+2. **Validate preconditions.** Run checks 1–7. On any failure, stop and report the specific precondition. If `gh pr view` returns OPEN, prompt the user via one `AskUserQuestion`: "PR is currently OPEN. Close it now and revert the thread to active? (Any review comments will be retained on the closed PR for reference, but the thread becomes locally editable.)" Default Yes.
+2a. **(OPEN-only) Close the PR.** Run `gh pr close [pr_url] --delete-branch=[delete_branch]`. The PR transitions OPEN → CLOSED with `mergedAt: null`. From here the flow merges with the rejected-PR path.
 3. **Flip thread frontmatter (commit 1 of 1).** In `project-brain/threads/[thread_slug]/thread.md`:
     - `status: in-review → active`
     - `maturity: locking → refining`

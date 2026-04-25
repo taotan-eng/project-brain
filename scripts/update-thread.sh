@@ -136,6 +136,14 @@ current_status = frontmatter.get('status', 'unknown')
 
 if current_status not in ['active', 'parked']:
     print(f"error: cannot update a {current_status} thread", file=sys.stderr)
+    if current_status == 'in-review':
+        print("       To edit an in-review thread, run discard-promotion first", file=sys.stderr)
+        print("       to revert to active. The PR will be closed (any review", file=sys.stderr)
+        print("       comments stay on the closed PR for reference); the thread", file=sys.stderr)
+        print("       becomes locally editable. Re-promote when ready.", file=sys.stderr)
+    elif current_status == 'archived':
+        print("       To edit an archived thread, run restore-thread first to", file=sys.stderr)
+        print("       bring it back to active.", file=sys.stderr)
     sys.exit(1)
 
 # Apply operation
