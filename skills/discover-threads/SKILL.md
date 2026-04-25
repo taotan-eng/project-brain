@@ -1,6 +1,6 @@
 ---
 name: discover-threads
-description: Read-only discovery skill that queries per-thread frontmatter ad-hoc with rich filters (status, assignment, maturity, domain, review requirement, stale-thread detection, PR state) and returns filtered views on demand. Works even if thread-index.md is stale. Supports table, JSON, CSV, YAML, and path-only output formats. Use when the user says "what threads are assigned to me", "what parked threads are blocking promotion", "what stale threads in engineering", "threads requiring two-human review", or needs a machine-readable feed for downstream tooling.
+description: Read-only discovery skill that queries per-thread frontmatter ad-hoc with rich filters (status, assignment, maturity, domain, review requirement, stale-thread detection, PR state) and returns filtered views on demand. Works even if thread-index.md is stale. Supports table, JSON, CSV, YAML, and path-only output formats. Use when the user says "what threads are assigned to me", "what parked threads are blocking promotion", "what stale threads in <some-domain>", "threads requiring two-human review", or needs a machine-readable feed for downstream tooling.
 version: 1.0.0-rc4
 pack: project-brain
 requires:
@@ -20,7 +20,7 @@ The skill is read-only. It works even when `thread-index.md` and `current-state.
 - "What threads are assigned to me?" / "Show my assignments"
 - "What threads are stale?" / "What hasn't been touched in 30 days?"
 - "What parked threads are actionable?" / "Show parked threads with unpark_trigger set"
-- "What threads in engineering/ require two-human review?"
+- "What threads in `<domain>/` require two-human review?"
 - "What in-review threads have open PRs?" / "Surface PR state for active threads"
 - "Export thread inventory to JSON" / "feed a dashboard with live thread list"
 - "What threads target a specific tree domain?" / "find all threads aimed at product/billing"
@@ -209,11 +209,11 @@ discover-threads --assigned=tom --format=table
 ```
 Returns all threads (active, parked, in-review) where `assigned_to` contains "tom", in markdown table format.
 
-### "What stale threads in engineering?"
+### "What stale threads in `<some-domain>`?"
 ```
-discover-threads --domain=engineering --modified-before=30d --format=table
+discover-threads --domain=<some-domain> --modified-before=30d --format=table
 ```
-Returns active/parked/in-review threads under `engineering/*` not modified in the last 30 days.
+Returns active/parked/in-review threads under that domain not modified in the last 30 days. Substitute whatever domain you actually have leaves under — the pack ships no domains by default; they emerge organically as you promote.
 
 ### "What parked threads are actionable?"
 ```
