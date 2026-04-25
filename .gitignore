@@ -29,3 +29,8 @@ Thumbs.db
 # If you use the default materialize-context ephemeral output location, it
 # sits under $XDG_CACHE_HOME and is not in your repo — no ignore needed.
 sandbox/
+
+# Stale duplicate template — removed in bug #7 follow-up.
+# FUSE-mounted workspaces may leave the on-disk dir (sandbox can't
+# unlink). Ignored so re-scans don't track it again.
+skills/new-thread/_stale_assets/
