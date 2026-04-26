@@ -174,7 +174,7 @@ myapp:
 - `url` is informational for the registry. The actual push target is looked up via `git remote get-url <name>` inside the brain repo.
 - Environment overrides honoured by the validator: `PROJECT_BRAIN_CONFIG` (per-project config path), `PROJECT_BRAIN_PROJECTS_YAML` (global registry path). Both are primarily for tests and CI.
 
-Skills resolve project-aliased URIs (e.g. `adp:engineering/ir/spec-full.md`) through the two-layer model. This decouples addressing from filesystem location — repos can move without breaking refs.
+Skills resolve project-aliased URIs (e.g. `<alias>:<some-domain>/<some-path>.md`) through the two-layer model. This decouples addressing from filesystem location — repos can move without breaking refs.
 
 ### 2.4 V-03 severity rules for alias refs
 
@@ -493,7 +493,7 @@ A leaf's status is always a function of its impl-spec's status at transitions ma
 ### 5.1 Supported schemes
 
 ```
-<alias>:<tree-path>            # e.g. adp:engineering/ir/spec-full.md
+<alias>:<tree-path>            # e.g. otherproj:<some-domain>/<some-leaf>.md
 <alias>:thread/<slug>          # thread reference by alias
 /<tree-path>                   # tree-internal path (same tree only)
 file://<absolute-path>         # local file outside the tree
@@ -520,8 +520,8 @@ For unrole'd references, a bare string is sugar for `{ uri: <string> }`:
 
 ```yaml
 soft_links:
-  - /engineering/ir/spec-full.md           # sugar, tree-internal
-  - uri: adp:engineering/ir/examples/      # object form
+  - /<some-domain>/<some-leaf>.md          # sugar, tree-internal
+  - uri: <alias>:<some-domain>/examples/   # object form, cross-project alias
     role: related-work
   - uri: mcp://slack/thread/C123/p456      # MCP ref with role
     role: conversation
@@ -655,16 +655,28 @@ This is the only section a project customizes. Everything above is shared across
 
 ### 10.1 Tree domain taxonomy
 
-List the top-level domains this project uses. Example:
+List the top-level domains this project uses. **The pack ships no domains by default** — whatever you write here, or whatever domain you supply at first `promote-thread-to-tree` invocation, is what `tree/` will populate. Example shapes (do NOT copy verbatim — pick what fits your project):
 
 ```
-engineering/
-  ir/
-  runtime/
-  integrations/
-product/
+# A backend-heavy software project might shape as:
+architecture/
+  data-model/
+  apis/
+infra/
 operations/
+
+# A research project might shape as:
+methodology/
+findings/
+open-problems/
+
+# A product-management project might shape as:
+discovery/
+shipping/
+post-mortems/
 ```
+
+The pack's only constraint is § 11.1 (kebab-case slug). Names are entirely your call; resist defaulting to whatever a sample showed.
 
 ### 10.2 Debate personas
 
@@ -764,10 +776,10 @@ Conventional commits with thread or leaf scope:
 Examples:
 
 ```
-promote(adp-ir-2026-04): add ir-spec to engineering/ir
-debate(ir-spec): round-05 proposed patches
-build(ir-spec): stage 2 — validator surface
-chore(tree): normalize soft_links under engineering/
+promote(<thread-slug>): add <leaf-slug> to <domain>/<sub>
+debate(<thread-slug>): round-05 proposed patches
+build(<leaf-slug>): stage 2 — validator surface
+chore(tree): normalize soft_links under <domain>/
 ```
 
 ---

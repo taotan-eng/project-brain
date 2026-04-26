@@ -29,7 +29,9 @@ Your agent clones the pack, places the skills where they belong (`.claude/skills
 - `title` — title-cased directory name
 - `owner` — `git config user.email` (falls back to `$USER@localhost` with a TODO marker in CONVENTIONS.md § 10 if git isn't configured)
 
-After init, your project gains a `project-brain/` directory with `CONVENTIONS.md`, `config.yaml` (operational knobs — see below), `thread-index.md`, `current-state.md`, `tree/NODE.md`, an `engineering/NODE.md` default domain, and empty `threads/` + `archive/` dirs. A `.gitignore` is written alongside excluding `transcript.md` and `attachments/` by default.
+After init, your project gains a `project-brain/` directory with `CONVENTIONS.md`, `config.yaml` (operational knobs — see below), `thread-index.md`, `current-state.md`, an empty `tree/` (just `tree/.gitkeep` — domains emerge on demand when `promote-thread-to-tree` lands the first leaf), and empty `threads/` + `archive/` dirs. A `.gitignore` is written alongside excluding `transcript.md` and `attachments/` by default.
+
+**No default domain is created.** Whatever your first promoted decision is — say it's about authentication, and you choose `architecture` as its domain — that's when `tree/architecture/NODE.md` first appears. Same for `product/`, `infra/`, anything else. The pack ships zero opinion about what your domains should be called.
 
 Three flags if you want something other than the default:
 
