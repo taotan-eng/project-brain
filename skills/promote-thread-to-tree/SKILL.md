@@ -61,19 +61,19 @@ The skill **refuses** if any of these are not met.
 
 > ### ⛔️ HARD CONSTRAINT — TREE DOMAIN MUST COME FROM THE USER, NEVER FROM YOU
 >
-> The pack ships with **no default tree taxonomy**. Domains exist only when the user has explicitly named one — by setting `tree_domain` on the thread's frontmatter, by passing an explicit `--domain=<value>` to a script, or by answering an `AskUserQuestion` at promote-time.
+> The pack ships with **no default tree taxonomy**. Domains exist only when the user has explicitly named one. The agent must elicit the user's choice — never infer it.
 >
 > Before staging any leaf, resolve the destination domain in this exact order:
 >
-> 1. If the source thread's frontmatter has a non-empty `tree_domain`, use that.
-> 2. Else, if the user's invocation supplied an explicit domain (CLI flag, prose like "promote into `<dir>/`"), use that.
+> 1. If the user's current invocation supplied an explicit domain (CLI flag, prose like "promote into `<dir>/`"), use that.
+> 2. Else, if the source thread's frontmatter has a non-empty `tree_domain` AND that value was last edited *by the user* (i.e., it predates this turn — you can see it in your initial Read of the file, you didn't write it yourself in this session), you MAY treat it as the user's prior-blessed default. Confirm before proceeding: "I see `tree_domain: <X>` on this thread — should this leaf land there? Or somewhere else?"
 > 3. Else, **ask the user via `AskUserQuestion`** — present the existing top-level entries under `project-brain/tree/` (just `ls`) plus an "other (type one)" option. Phrasing: "What folder under `tree/` should this leaf land in? Pick an existing one, or name a new one — the taxonomy is yours."
 >
 > **Do NOT infer a domain from the thread's content topic.** A thread about hardware is NOT automatically an `engineering/` thread; a hiring thread is NOT automatically `hr/` or `people/`. Every example you see in this SKILL.md or any other doc — including `<your-domain>`, `<sub-area>`, etc. — is placeholder syntax, never a literal.
 >
-> If you find yourself about to write `tree-staging/<any-concrete-name>/...` without the user having named that folder, STOP and ask. This is the most consistently-reported bug in the pack: the LLM picks a domain from thread content (most commonly "engineering" because thread-content topics often sound engineering-flavored) without confirming with the user. The fix is universal — ask before staging, regardless of which specific name you'd otherwise pick.
+> **Do NOT "self-serve" by writing `tree_domain` to the thread to satisfy the script's guardrail.** This is a known agent failure mode: agent stages into the wrong folder, script refuses with a remediation message, agent edits thread.md to add `tree_domain: <X>`, re-runs. The script doesn't actually accept frontmatter as consent — it only honors `--allow-domain=<X>` (which is visible in the bash tool-call audit). If the script refuses, **come back to the user** and ask. Don't loop on workarounds.
 >
-> Backstop: `promote-local.sh` refuses to land into ANY `tree/<name>/` folder unless the user explicitly consented for THIS promotion (via thread `tree_domain` matching the staged path's top-level OR `--allow-domain=<name>` on the script invocation). Folder existence on disk is NOT consent — even if `tree/architecture/` is already there from a prior promotion, the script still requires active consent for each new leaf. If you ignore the HARD CONSTRAINT, the script will refuse with a clear remediation message.
+> Backstop: `promote-local.sh` refuses to land into ANY `tree/<name>/` folder unless `--allow-domain=<name>` was passed on the script invocation. Folder existence on disk is NOT consent. Thread `tree_domain` is documentation (the agent's memory of past blessed choices) but is NOT script-level authority. The ONLY consent path the script accepts is the `--allow-domain` flag, whose value must match the user's stated preference.
 
 ### Mode dispatch
 

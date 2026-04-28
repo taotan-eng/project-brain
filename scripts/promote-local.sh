@@ -111,41 +111,35 @@ fi
 
 # ---------------------------------------------------------------------------
 # Domain-consent guardrail — every promotion's destination domain must be
-# explicitly consented to. Consent has exactly two forms:
+# explicitly consented to via the `--allow-domain=<X>` flag on THIS script
+# invocation. The flag is the ONLY consent path the script honors.
 #
-#   1. The thread's thread.md frontmatter has `tree_domain: <X>` set,
-#      and the staged path's top-level matches `<X>`.
-#   2. The user passed `--allow-domain=<X>` on this script invocation.
+# Why not also accept thread frontmatter `tree_domain`? Because the LLM
+# has write access to thread.md. We've observed agents fabricate consent
+# by editing the frontmatter themselves: agent stages into the wrong
+# folder, script refuses, agent reads the refusal message, "fixes" it by
+# writing tree_domain into the thread, re-runs, succeeds — all without
+# the user ever being asked. Frontmatter is documentation, not authority.
 #
-# Folder existence on disk is NOT consent — folders can get created by
-# prior LLM mistakes, manual mkdir, half-finished promotions, etc., and
-# silently re-using an "existing" folder would launder those into
-# permanent destinations. Every leaf must be land where the user said
-# to land it, not where one happens to fit.
+# `--allow-domain=<X>` is preferred because it's visible in the bash
+# tool-call audit. If the agent fabricates the value (still possible),
+# at least the user can see it in the session transcript and push back.
+#
+# `tree_domain` on the thread is still useful as the agent's memory of
+# past user-blessed choices (the agent reads it to construct
+# `--allow-domain=`), but it carries no script-level authority.
+#
+# Folder existence on disk is also NOT consent — folders can be created
+# by prior LLM mistakes, manual mkdir, or half-finished promotions; we
+# require an active declaration of intent for every promotion.
 #
 # This is BACKSTOP. The primary control is the HARD CONSTRAINT in
 # skills/promote-thread-to-tree/SKILL.md telling the agent to ASK the
-# user (via AskUserQuestion) before staging. This guardrail catches
-# the agent when it skips the ask.
+# user (via AskUserQuestion) before staging.
 # ---------------------------------------------------------------------------
 
-# Read tree_domain from thread frontmatter (best-effort; missing → empty).
-THREAD_TREE_DOMAIN="$(awk '
-  BEGIN { in_fm=0 }
-  NR==1 && /^---/ { in_fm=1; next }
-  in_fm && /^---/ { in_fm=0; exit }
-  in_fm && /^tree_domain[[:space:]]*:/ {
-    sub(/^tree_domain[[:space:]]*:[[:space:]]*/, "", $0)
-    gsub(/^["\x27]|["\x27]$/, "", $0)
-    print; exit
-  }
-' "$THREAD_DIR/thread.md" 2>/dev/null)"
-
-# Build the set of explicitly-consented top-level domains.
+# Build the set of explicitly-consented top-level domains from the flag only.
 declare -A ALLOWED_DOMAINS=()
-if [[ -n "$THREAD_TREE_DOMAIN" ]]; then
-  ALLOWED_DOMAINS["${THREAD_TREE_DOMAIN%%/*}"]=1
-fi
 if [[ -n "$ALLOW_DOMAIN_CSV" ]]; then
   IFS=',' read -r -a allow_arr <<< "$ALLOW_DOMAIN_CSV"
   for d in "${allow_arr[@]}"; do
@@ -167,43 +161,38 @@ for entry in "${STAGED[@]}"; do
   fi
 
   # No consent for this domain. Refuse.
-  if [[ -d "$BRAIN/tree/$toplevel" ]]; then
-    note="(folder tree/${toplevel}/ already exists — but the script doesn't
-   treat that as consent. Folders can be created by prior LLM mistakes,
-   manual mkdir, or half-finished promotions; we require an active
-   declaration of intent for every promotion.)"
-  else
-    note="(folder tree/${toplevel}/ does not yet exist — this would create
-   a new top-level taxonomy entry.)"
-  fi
   cat >&2 <<EOF
 error: refusing to land into tree/${toplevel}/ — domain not consented.
 
-  ${note}
+  No --allow-domain=${toplevel} flag on this invocation, so the script
+  has no authority to land a leaf into tree/${toplevel}/. The agent that
+  staged the leaf was supposed to ask the user for the destination (via
+  the promote-thread-to-tree skill's domain-resolution protocol) and
+  pass the user's answer as --allow-domain=<their-answer>. It didn't,
+  so we're stopping before any file moves.
 
-  This thread has no \`tree_domain\` set on thread.md (or it doesn't match
-  "${toplevel}"), and you didn't pass --allow-domain=${toplevel} on this
-  invocation. The agent that staged the leaf was supposed to ask you for
-  the destination via the promote-thread-to-tree skill's domain-
-  resolution protocol; it didn't, so we're stopping before the leaf moves.
+  ─── If you are the agent reading this ─────────────────────────────
+  Do NOT "fix" this by editing the thread's frontmatter to add
+  tree_domain: ${toplevel} — the script does not read frontmatter as
+  consent (frontmatter is writable by you, so it can't carry user
+  authority). The ONLY remediation is:
 
-  If "${toplevel}" IS your deliberate folder choice, opt in via ONE of:
+      1. Invoke AskUserQuestion to ask the user where this leaf should
+         live. Show them existing tree/ folders (\`ls tree/\`) plus an
+         "other (type one)" option. Don't suggest a default.
+      2. Wait for their answer.
+      3. Re-invoke this script with --allow-domain=<their-answer>.
+      4. (Optional, for future-promotion convenience: also write
+         tree_domain: <their-answer> to thread.md so future agent runs
+         can construct --allow-domain= without re-asking. This is
+         documentation, not consent.)
 
-      1. Set tree_domain on the thread's thread.md frontmatter (preferred,
-         persists across promotions and survives session boundaries):
-              tree_domain: ${toplevel}
-
-      2. Pass the flag on this script invocation:
-              --allow-domain=${toplevel}
-
-  If "${toplevel}" was the agent's guess and you'd prefer a different
-  folder, move the staged files:
-      threads/${SLUG}/tree-staging/${toplevel}/  →
-      threads/${SLUG}/tree-staging/<your-real-domain>/
-  and re-run.
-
-  See skills/promote-thread-to-tree/SKILL.md § Process for the domain-
-  resolution protocol the agent should have followed.
+  ─── If you are the user reading this ─────────────────────────────
+  Either:
+      a) The agent staged into tree/${toplevel}/ on its own guess — tell
+         it where you actually want the leaf.
+      b) "${toplevel}" IS your real choice — re-invoke with
+            --allow-domain=${toplevel}
 EOF
   exit 1
 done
