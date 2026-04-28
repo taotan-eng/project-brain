@@ -43,9 +43,16 @@ Skill is pure read-only — no writes, no shell spawns beyond awk/sed/find — s
 
 ## Process
 
-> ### ⛔️ HARD CONSTRAINT — ONE TOOL CALL
+> ### ⛔️ HARD CONSTRAINT — ONE TOOL CALL + VERBATIM ECHO
 >
-> **Call `${CLAUDE_PLUGIN_ROOT}/scripts/review-thread.sh` ONCE.** No `Read` of thread.md, transcript.md, or artifacts — the script parses and renders everything. **Echo the script's stdout in your response message verbatim** — don't summarize, transform, or rely on the Bash tool's result card to display it. The user should see the script's output as part of your reply.
+> **Call `${CLAUDE_PLUGIN_ROOT}/scripts/review-thread.sh` ONCE.** No `Read` of thread.md, transcript.md, or artifacts — the script parses and renders everything.
+>
+> **After the bash call returns, paste the script's stdout into your assistant message in full, inside a fenced code block.** Do not summarize. Do not transform. Do not rely on the Bash tool's result card to display it for you — the Cowork result card collapses by default, so an empty assistant message means the user sees only "Ran a command >" and your work is invisible.
+>
+> The output already contains clickable `computer://` links to thread.md, transcript.md, artifacts, and attachments — those links *only render when you echo the stdout in your reply.* Stripping them out defeats the whole skill.
+>
+> **WRONG** — leaving the assistant message empty (or writing only "Done."): user sees "Ran a command >" with no detail.
+> **RIGHT** — pasting the script's stdout verbatim in a code block, then optionally one short follow-up sentence.
 >
 > **Derive `--full` / `--last` / `--since` from phrasing:** "show me the full transcript" → `--full`. "what happened last week" → `--since=<computed>`. Otherwise default (summary + last 3 entries).
 
@@ -60,7 +67,7 @@ Skill is pure read-only — no writes, no shell spawns beyond awk/sed/find — s
   [--since=<ISO8601>]
 ```
 
-Infer `--slug` from cwd; only ask if the user is outside any thread dir and didn't name one. After success, echo the script's stdout in your response message verbatim — don't rely on the Bash tool's result card to display it; the user should see the script's output as part of your reply. No additional commentary unless the user asks a follow-up.
+Infer `--slug` from cwd; only ask if the user is outside any thread dir and didn't name one. After success, **paste the script's stdout into your reply in full, inside a fenced code block** — the output contains clickable `computer://` links that only render when echoed. Don't rely on the Bash tool's result card; the user should see the script's output as part of your reply. No additional commentary unless the user asks a follow-up.
 
 ### Dry-run semantics
 

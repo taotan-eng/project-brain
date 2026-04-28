@@ -201,6 +201,18 @@ if [[ -d "$THREAD_DIR/attachments" ]]; then
   done < <(find "$THREAD_DIR/attachments" -maxdepth 1 -type f 2>/dev/null | sort)
 fi
 
+# Format bytes → human-readable string ("420 B", "12.3 KB", "4.5 MB").
+human_size() {
+  local b="${1:-?}"
+  if [[ "$b" == "?" || -z "$b" ]]; then echo "?"; return; fi
+  awk -v b="$b" 'BEGIN {
+    if (b < 1024)              printf "%d B",   b;
+    else if (b < 1048576)      printf "%.1f KB", b/1024;
+    else if (b < 1073741824)   printf "%.1f MB", b/1048576;
+    else                       printf "%.1f GB", b/1073741824;
+  }'
+}
+
 # ---------------------------------------------------------------------------
 # 5. Transcript: count H2 entries + extract recent ones.
 # ---------------------------------------------------------------------------
@@ -240,32 +252,6 @@ fi
   "$LAST_MOD_AT" "$( [[ -n "$LAST_MOD_BY" ]] && printf ' by %s' "$LAST_MOD_BY" )"
 [[ -n "$PURPOSE" ]]      && printf '  purpose:      %s\n' "$PURPOSE"
 
-printf '\n'
-printf '  open questions:        %s\n' "$OQ_COUNT"
-printf '  decisions-candidates:  %s\n' "$DC_COUNT"
-printf '  artifacts:             %s\n' "${#ARTIFACTS[@]}"
-printf '  attachments:           %s\n' "${#ATTACHMENTS[@]}"
-
-if [[ ${#ARTIFACTS[@]} -gt 0 ]]; then
-  printf '\nArtifacts:\n'
-  for p in "${ARTIFACTS[@]}"; do
-    atitle="$(fm_scalar "$p" title)"
-    akind="$(fm_scalar "$p" artifact_kind)"
-    [[ -z "$akind" ]] && akind="-"
-    rel="$(realpath --relative-to="$THREAD_DIR" "$p")"
-    printf '  %s  [%s]  %s\n' "$rel" "$akind" "$atitle"
-  done
-fi
-
-if [[ ${#ATTACHMENTS[@]} -gt 0 ]]; then
-  printf '\nAttachments:\n'
-  for p in "${ATTACHMENTS[@]}"; do
-    rel="$(realpath --relative-to="$THREAD_DIR" "$p")"
-    size="$(stat -c%s "$p" 2>/dev/null || stat -f%z "$p" 2>/dev/null || echo '?')"
-    printf '  %s  (%s bytes)\n' "$rel" "$size"
-  done
-fi
-
 # --------------------------------------------------------------------------
 # thread.md body — extract everything after the closing frontmatter delim.
 # Threads commonly carry their substantive content here (per CONVENTIONS:
@@ -279,24 +265,83 @@ extract_body() {
 BODY="$(extract_body "$THREAD_MD")"
 BODY_LINE_COUNT=$(printf '%s' "$BODY" | grep -c .)
 
-# Body summary line, sits in the counts block.
-printf '  body lines:           %s\n' "$BODY_LINE_COUNT"
+OQ_FILE="$THREAD_DIR/open-questions.md"
+DC_FILE="$THREAD_DIR/decisions-candidates.md"
 
-printf '\nTranscript:  %s entries' "$TRANSCRIPT_COUNT"
-[[ -n "$TRANSCRIPT_LAST_TS" ]] && printf ', last at %s' "$TRANSCRIPT_LAST_TS"
+printf '\n'
+printf '  open questions:        %s\n' "$OQ_COUNT"
+printf '  decisions-candidates:  %s\n' "$DC_COUNT"
+printf '  artifacts:             %s\n' "${#ARTIFACTS[@]}"
+printf '  attachments:           %s\n' "${#ATTACHMENTS[@]}"
+printf '  body lines:            %s\n' "$BODY_LINE_COUNT"
+printf '  transcript entries:    %s' "$TRANSCRIPT_COUNT"
+[[ -n "$TRANSCRIPT_LAST_TS" ]] && printf ' (last at %s)' "$TRANSCRIPT_LAST_TS"
 printf '\n'
 
 # --------------------------------------------------------------------------
-# Body rendering. --full dumps the entire body verbatim. Default mode emits
-# a short hint so the user knows there's content there without the full dump.
+# Files block — clickable computer:// links for every file the user is
+# likely to want to open directly. This is the default detail view: the
+# script can't show *everything*, but it can hand the user a one-click path
+# into each file. The earlier default ("body present, use --full") buried
+# the user's data; this surfaces it instead.
 # --------------------------------------------------------------------------
-if [[ $FULL -eq 1 ]]; then
-  if [[ $BODY_LINE_COUNT -gt 0 ]]; then
-    printf '\n----- thread.md body -----\n'
-    printf '%s\n' "$BODY"
+emit_link() {
+  # $1 = label, $2 = absolute path, $3 = trailing annotation (optional)
+  local label="$1" abs="$2" annot="${3:-}"
+  if [[ -n "$annot" ]]; then
+    printf '  [%s](computer://%s) — %s\n' "$label" "$abs" "$annot"
+  else
+    printf '  [%s](computer://%s)\n' "$label" "$abs"
   fi
-elif [[ $BODY_LINE_COUNT -gt 0 ]]; then
-  printf '             body present (use --full to dump %s lines of thread.md)\n' "$BODY_LINE_COUNT"
+}
+
+printf '\nFiles:\n'
+emit_link "thread.md" "$THREAD_MD" \
+  "$( [[ $BODY_LINE_COUNT -gt 0 ]] && printf '%s body lines' "$BODY_LINE_COUNT" || printf 'frontmatter only' )"
+if [[ -f "$OQ_FILE" ]]; then
+  emit_link "open-questions.md" "$OQ_FILE" "$OQ_COUNT items"
+fi
+if [[ -f "$DC_FILE" ]]; then
+  emit_link "decisions-candidates.md" "$DC_FILE" "$DC_COUNT items"
+fi
+if [[ -f "$TRANSCRIPT" ]]; then
+  if [[ -n "$TRANSCRIPT_LAST_TS" ]]; then
+    emit_link "transcript.md" "$TRANSCRIPT" "$TRANSCRIPT_COUNT entries, last $TRANSCRIPT_LAST_TS"
+  else
+    emit_link "transcript.md" "$TRANSCRIPT" "$TRANSCRIPT_COUNT entries"
+  fi
+fi
+
+if [[ ${#ARTIFACTS[@]} -gt 0 ]]; then
+  printf '\nArtifacts (%s):\n' "${#ARTIFACTS[@]}"
+  for p in "${ARTIFACTS[@]}"; do
+    atitle="$(fm_scalar "$p" title)"
+    akind="$(fm_scalar "$p" artifact_kind)"
+    [[ -z "$akind" ]] && akind="-"
+    [[ -z "$atitle" ]] && atitle="$(basename "$p" .md)"
+    rel="$(realpath --relative-to="$THREAD_DIR" "$p")"
+    printf '  [%s](computer://%s) — [%s] %s\n' "$rel" "$p" "$akind" "$atitle"
+  done
+fi
+
+if [[ ${#ATTACHMENTS[@]} -gt 0 ]]; then
+  printf '\nAttachments (%s):\n' "${#ATTACHMENTS[@]}"
+  for p in "${ATTACHMENTS[@]}"; do
+    rel="$(realpath --relative-to="$THREAD_DIR" "$p")"
+    size_b="$(stat -c%s "$p" 2>/dev/null || stat -f%z "$p" 2>/dev/null || echo '?')"
+    size_h="$(human_size "$size_b")"
+    printf '  [%s](computer://%s) — %s\n' "$rel" "$p" "$size_h"
+  done
+fi
+
+# --------------------------------------------------------------------------
+# Body rendering. --full dumps the entire body verbatim. Default mode is
+# silent here — the Files block above already surfaced the link plus line
+# count, so an extra "body present" hint would be redundant.
+# --------------------------------------------------------------------------
+if [[ $FULL -eq 1 && $BODY_LINE_COUNT -gt 0 ]]; then
+  printf '\n----- thread.md body -----\n'
+  printf '%s\n' "$BODY"
 fi
 
 if [[ $TRANSCRIPT_COUNT -eq 0 ]]; then
