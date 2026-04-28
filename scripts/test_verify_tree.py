@@ -1308,5 +1308,135 @@ class RestoreThreadTests(BaseTest):
         self.assertEqual(r.returncode, 2)
 
 
+class DiscoverThreadsTests(BaseTest):
+    """discover-threads.sh — read-only thread query. Validates filter, sort,
+    limit, and format combinations against a synthetic brain."""
+
+    DISCOVER = HERE / "discover-threads.sh"
+
+    def _run(self, brain, *args):
+        return subprocess.run(
+            ["bash", str(self.DISCOVER), "--brain", str(brain), *args],
+            capture_output=True, text=True,
+        )
+
+    def _setup_brain(self, brain):
+        # Three threads with varied state; one archived.
+        make_thread(brain, "alpha", status="active", maturity="locking",
+                    extras='assigned_to:\n  - alice\ntree_domain: architecture\n')
+        make_thread(brain, "beta",  status="parked", maturity="refining",
+                    extras='parked_at: "2026-04-01T00:00:00Z"\n'
+                           'parked_by: alice\nparked_reason: "waiting"\n'
+                           'unpark_trigger: "after Q2 launches"\n')
+        make_thread(brain, "gamma", status="active", maturity="exploring",
+                    extras='assigned_to:\n  - bob\n  - carol\n')
+        # An archived thread under archive/
+        make_thread(brain, "delta", status="archived", maturity=None,
+                    extras='archived_at: "2026-03-15T00:00:00Z"\n'
+                           'archived_by: bob\n', location="archive")
+
+    def test_default_returns_non_archived(self):
+        brain = make_brain(self.tmp_path)
+        self._setup_brain(brain)
+        r = self._run(brain)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("alpha", r.stdout)
+        self.assertIn("beta", r.stdout)
+        self.assertIn("gamma", r.stdout)
+        self.assertNotIn("delta", r.stdout)
+        self.assertIn("3 threads matched", r.stdout)
+
+    def test_include_archived(self):
+        brain = make_brain(self.tmp_path)
+        self._setup_brain(brain)
+        r = self._run(brain, "--include-archived")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("delta", r.stdout)
+        self.assertIn("4 threads matched", r.stdout)
+
+    def test_status_filter(self):
+        brain = make_brain(self.tmp_path)
+        self._setup_brain(brain)
+        r = self._run(brain, "--status=parked")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("beta", r.stdout)
+        self.assertNotIn("alpha", r.stdout)
+        self.assertNotIn("gamma", r.stdout)
+        self.assertIn("1 thread matched", r.stdout)
+
+    def test_assigned_filter_substring(self):
+        brain = make_brain(self.tmp_path)
+        self._setup_brain(brain)
+        r = self._run(brain, "--assigned=alice")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("alpha", r.stdout)  # alice in assigned_to
+        self.assertNotIn("gamma", r.stdout)  # only bob+carol
+
+    def test_domain_prefix_match(self):
+        brain = make_brain(self.tmp_path)
+        self._setup_brain(brain)
+        r = self._run(brain, "--domain=architecture")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("alpha", r.stdout)
+        self.assertNotIn("beta", r.stdout)
+
+    def test_unpark_trigger_set(self):
+        brain = make_brain(self.tmp_path)
+        self._setup_brain(brain)
+        r = self._run(brain, "--unpark-trigger-set")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("beta", r.stdout)
+        self.assertNotIn("alpha", r.stdout)
+
+    def test_format_paths(self):
+        brain = make_brain(self.tmp_path)
+        self._setup_brain(brain)
+        r = self._run(brain, "--format=paths", "--sort=slug")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        # Should be 3 newline-separated paths, no header, no formatting
+        lines = [L for L in r.stdout.strip().split("\n") if L]
+        self.assertEqual(len(lines), 3)
+        self.assertTrue(all(L.startswith("threads/") and L.endswith("/thread.md") for L in lines))
+
+    def test_format_json(self):
+        brain = make_brain(self.tmp_path)
+        self._setup_brain(brain)
+        r = self._run(brain, "--format=json", "--sort=slug")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        data = json.loads(r.stdout)
+        self.assertEqual(len(data), 3)
+        self.assertTrue(all("slug" in row and "status" in row for row in data))
+        self.assertEqual(data[0]["slug"], "alpha")
+
+    def test_limit(self):
+        brain = make_brain(self.tmp_path)
+        self._setup_brain(brain)
+        r = self._run(brain, "--limit=2", "--sort=slug")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("alpha", r.stdout)
+        self.assertIn("beta", r.stdout)
+        self.assertNotIn("gamma", r.stdout)
+        self.assertIn("2 threads matched", r.stdout)
+
+    def test_empty_result_on_unmatched_filter(self):
+        brain = make_brain(self.tmp_path)
+        self._setup_brain(brain)
+        r = self._run(brain, "--domain=nonexistent")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("(no threads matched)", r.stdout)
+
+    def test_invalid_sort_errors(self):
+        brain = make_brain(self.tmp_path)
+        r = self._run(brain, "--sort=bogus")
+        self.assertEqual(r.returncode, 2)
+        self.assertIn("--sort must be", r.stderr)
+
+    def test_mutually_exclusive_pr_flags(self):
+        brain = make_brain(self.tmp_path)
+        r = self._run(brain, "--has-pr", "--no-pr")
+        self.assertEqual(r.returncode, 2)
+        self.assertIn("mutually exclusive", r.stderr)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

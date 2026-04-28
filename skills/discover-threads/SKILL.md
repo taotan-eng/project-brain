@@ -71,51 +71,47 @@ The skill **refuses** if any of these are not met.
 
 ## Process
 
-Each step is read-only and idempotent.
+> ### ⛔️ HARD CONSTRAINT — ONE TOOL CALL
+>
+> **Call `${CLAUDE_PLUGIN_ROOT}/scripts/discover-threads.sh` ONCE.** No `Read` of thread.md files, no manual frontmatter parsing, no `glob` walks. The script enumerates threads, parses frontmatter, applies filters, sorts, and renders the result.
+>
+> **Echo the script's stdout in your response message verbatim** — don't summarize, transform, or rely on the Bash tool's result card to display it. The user should see the script's output as part of your reply.
+>
+> **Derive flags from the user's question, not from defaults.** Examples:
+> - "what threads are assigned to alice" → `--assigned=alice`
+> - "stale threads in `<some-domain>`" → `--domain=<that-domain> --modified-before=<30-days-ago>`
+> - "parked threads needing attention" → `--status=parked --unpark-trigger-set`
+> - "what's in review with an open PR" → `--status=in-review --has-pr`
 
-1. **Resolve inputs.** Infer `brain_path` from cwd or `--brain` flag. Parse all filter flags. Validate flag values; refuse on error. Compute the effective `--status` list (default: `active,parked,in-review` unless `--include-archived` is set, then also include `archived`). Parse date filters to absolute timestamps.
-2. **Enumerate threads.** Scan `project-brain/threads/*/thread.md` for active/parked threads and `project-brain/archive/*/thread.md` if `--include-archived` is set. Collect file paths.
-3. **Parse frontmatter.** For each `thread.md`, parse YAML frontmatter. Extract: `id`, `title`, `status`, `maturity`, `created_at`, `created_by`, `last_modified_at`, `last_modified_by`, `assigned_to`, `review_requirement`, `tree_domain`, `tree_prs`, `parked_at`, `parked_by`, `parked_reason`, `unpark_trigger`, `archived_at`. On parse failure, emit a warning and skip the thread (do not halt); accumulate a list of malformed-frontmatter threads to report.
-4. **Apply filters.** For each parsed thread, test against all supplied filters (AND-logic):
-   - `--status`: thread status is in the list.
-   - `--owner`: `created_by` or `last_modified_by` contains the handle (case-insensitive substring match).
-   - `--assigned`: any entry in `assigned_to` contains the handle (case-insensitive substring match).
-   - `--domain`: `tree_domain` starts with the prefix (case-sensitive).
-   - `--maturity`: thread maturity is in the list. Skip non-active/parked threads (they have no maturity).
-   - `--modified-before`: `last_modified_at` <= the computed date.
-   - `--modified-after`: `last_modified_at` >= the computed date.
-   - `--review-requirement`: `review_requirement` field equals the string exactly.
-   - `--has-pr` / `--no-pr`: `tree_prs` non-empty (has-pr) or empty (no-pr).
-   - `--unpark-trigger-set`: `status == parked` AND `unpark_trigger` non-empty. (Only meaningful for parked threads.)
-   
-   Drop threads that fail any filter. Keep matching threads.
-5. **Sort.** Apply `--sort` order to the remaining threads:
-   - `modified-desc` (default): sort by `last_modified_at` descending (most recent first). Tiebreak: `slug` ascending.
-   - `created-desc`: sort by `created_at` descending. Tiebreak: `slug` ascending.
-   - `status`: sort by status alphabetically. Tiebreak: `slug` ascending.
-   - `slug`: sort by slug alphabetically.
-6. **Apply limit.** If `--limit=N` is set, retain only the first N threads.
-7. **Check PR state (optional).** If `--check-pr-state` is set and the format is not `--json-paths-only`:
-   - For each in-review thread, extract `tree_prs[-1]` (the most recent PR URL).
-   - Run `gh pr view <url> --json state --template '{{.state}}'` to fetch the state (OPEN, DRAFT, MERGED, CLOSED).
-   - On success, attach the state to the thread record.
-   - On `gh` unavailability, emit a warning to stderr and omit the `pr_state` column from the output.
-   - On PR fetch failure (404, auth, network), record the state as "error" and continue; do not halt.
-8. **Render output.** Format the results per `--format`:
-   - **`table` (default):** Markdown table with columns: `slug | status | maturity | created_by | assigned_to | last_modified_at | tree_domain | pr_state?` (pr_state column only if checked). Example:
-     ```
-     | slug | status | maturity | created_by | assigned_to | last_modified_at | tree_domain | pr_state |
-     |------|--------|----------|------------|-------------|------------------|-------------|----------|
-     | hire-backend-lead | active | locking | alice | alice, bob | 2026-04-22T10:00:00Z | engineering/hiring | |
-     | evaluate-crm-vendors | parked | refining | bob | bob | 2026-03-15T14:30:00Z | product/sales | |
-     | api-v2-ratelimit | in-review | locking | alice | alice | 2026-04-20T09:15:00Z | engineering/api | OPEN |
-     ```
-   - **`json`:** Array of objects, one per thread, all frontmatter fields preserved. `assigned_to` remains an array; dates remain ISO-8601 strings. Optional `pr_state` key if checked.
-   - **`csv`:** Same columns as table, CSV-escaped (quotes, commas escaped per RFC 4180).
-   - **`yaml`:** YAML array of thread records. Each record is a dict with keys for all frontmatter fields and optional `pr_state`.
-   - **`paths` (or `--json-paths-only`):** Newline-separated list of absolute paths to matching `thread.md` files. No header, no formatting. Useful for piping to `xargs`.
-9. **Report.** Emit output to stdout. If running in a TTY and format is `table`, pretty-print with color (status values color-coded: green for active, yellow for parked, blue for in-review, gray for archived). If piped (non-TTY), emit machine-parseable format.
-10. **Finish.** Return summary: thread count (total / matched / filtered), any parse warnings, and a next-step suggestion.
+**One call:**
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/scripts/discover-threads.sh" \
+  --brain=<absolute brain path> \
+  [--status=<csv>]              \    # active,parked,in-review,archived (default excludes archived)
+  [--owner=<substring>]         \    # case-insensitive substring on owner
+  [--assigned=<substring>]      \    # case-insensitive substring on assigned_to list
+  [--maturity=<csv>]            \    # exploring,refining,locking
+  [--domain=<prefix>]           \    # prefix match on tree_domain
+  [--modified-before=<ISO8601>] \
+  [--modified-after=<ISO8601>]  \
+  [--review-requirement=<value>] \   # exact match
+  [--has-pr | --no-pr]          \    # mutually exclusive
+  [--unpark-trigger-set]        \    # parked AND unpark_trigger non-empty
+  [--include-archived]          \
+  [--sort=<key>]                \    # modified-desc | created-desc | status | slug
+  [--limit=<N>]                 \
+  [--format=<fmt>]                   # table (default) | json | csv | yaml | paths
+```
+
+What the script does internally (you don't replicate this):
+
+- Walks `threads/*/thread.md` and optionally `archive/*/thread.md` (when `--include-archived` or `--status=archived` is in play).
+- Parses frontmatter via PyYAML (with the pack's stdlib `_yaml_mini` fallback if PyYAML isn't installed). Threads with malformed frontmatter are skipped silently.
+- Applies AND-logic filters across all provided flags.
+- Sorts (default `modified-desc`) and applies `--limit`.
+- Renders in the chosen format. `paths` mode emits newline-separated relative paths suitable for `xargs`.
+- Empty result is exit 0 with `(no threads matched)` text in `table` mode, `[]` in `json`, etc.
 
 ## Side effects
 

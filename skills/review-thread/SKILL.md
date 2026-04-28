@@ -45,7 +45,7 @@ Skill is pure read-only — no writes, no shell spawns beyond awk/sed/find — s
 
 > ### ⛔️ HARD CONSTRAINT — ONE TOOL CALL
 >
-> **Call `${CLAUDE_PLUGIN_ROOT}/scripts/review-thread.sh` ONCE.** No `Read` of thread.md, transcript.md, or artifacts — the script parses and renders everything. Pass stdout through verbatim.
+> **Call `${CLAUDE_PLUGIN_ROOT}/scripts/review-thread.sh` ONCE.** No `Read` of thread.md, transcript.md, or artifacts — the script parses and renders everything. **Echo the script's stdout in your response message verbatim** — don't summarize, transform, or rely on the Bash tool's result card to display it. The user should see the script's output as part of your reply.
 >
 > **Derive `--full` / `--last` / `--since` from phrasing:** "show me the full transcript" → `--full`. "what happened last week" → `--since=<computed>`. Otherwise default (summary + last 3 entries).
 
@@ -60,7 +60,7 @@ Skill is pure read-only — no writes, no shell spawns beyond awk/sed/find — s
   [--since=<ISO8601>]
 ```
 
-Infer `--slug` from cwd; only ask if the user is outside any thread dir and didn't name one. After success, passthrough stdout verbatim — no commentary unless the user asks a follow-up.
+Infer `--slug` from cwd; only ask if the user is outside any thread dir and didn't name one. After success, echo the script's stdout in your response message verbatim — don't rely on the Bash tool's result card to display it; the user should see the script's output as part of your reply. No additional commentary unless the user asks a follow-up.
 
 ### Dry-run semantics
 

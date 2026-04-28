@@ -66,7 +66,7 @@ The skill **refuses** if any of these are not met.
 
 Infer `--slug` from cwd. If the script exits non-zero citing `tree_prs`, use `discard-promotion` instead — the error message will point there.
 
-After success, **report.** Passthrough stdout verbatim.
+After success, **report.** Echo the script's stdout in your response message verbatim — don't summarize, transform, or rely on the Bash tool's result card to display it. The user should see the script's output as part of your reply.
 
 ### Dry-run semantics
 

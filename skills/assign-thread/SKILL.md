@@ -78,7 +78,7 @@ The skill **refuses** if any of these are not met.
 
 Infer `--slug` from cwd (nearest `threads/<slug>/` ancestor). Only ask the user for it if they're invoking assign-thread without any thread context. The script completes in ~110ms; it replaces 8 individual steps (load/compute/mutate/append/rebuild/report).
 
-After success, **report.** Passthrough the script's stdout verbatim.
+After success, **report.** Echo the script's stdout in your response message verbatim — don't summarize, transform, or rely on the Bash tool's result card to display it. The user should see the script's output as part of your reply.
 
 Suggested follow-up commit (the user runs this themselves):
 

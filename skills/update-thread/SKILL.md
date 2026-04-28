@@ -82,7 +82,7 @@ The skill **refuses** if any of these are not met.
   [--url=<uri>]                      # for soft-link-add/remove
 ```
 
-Infer `--slug` from cwd. After success, passthrough stdout verbatim.
+Infer `--slug` from cwd. After success, echo the script's stdout in your response message verbatim — don't rely on the Bash tool's result card to display it; the user should see the script's output as part of your reply.
 
 ### Dry-run semantics
 

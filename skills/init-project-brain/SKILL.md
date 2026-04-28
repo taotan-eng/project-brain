@@ -108,7 +108,7 @@ The script refuses with exit 1 and prints `error: project-brain already scaffold
 
 **Never** call `Read` to check for CONVENTIONS.md, `mkdir`, `mv`, or any individual scaffolding step yourself. The script does all of it, in ~100ms, in one permission prompt.
 
-After success, **report.** Passthrough the script's stdout verbatim. No commentary. At verbosity=terse the full user-visible output is exactly:
+After success, **report.** Echo the script's stdout in your response message verbatim — don't rely on the Bash tool's result card to display it; the user should see the script's output as part of your reply. No additional commentary. At verbosity=terse the full user-visible output is exactly:
 
     ```
     Project home: <project_home>  (source: <detection_source>)

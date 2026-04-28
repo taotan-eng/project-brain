@@ -58,7 +58,7 @@ The skill **refuses** if any are not met:
   [--by=<email>]
 ```
 
-After success, passthrough stdout verbatim. The script prints the new status + maturity, the optional reason, and `Done.`
+After success, echo the script's stdout in your response message verbatim — don't rely on the Bash tool's result card to display it; the user should see the script's output as part of your reply. The script prints the new status + maturity, the optional reason, and `Done.`
 
 ## Failure modes
 

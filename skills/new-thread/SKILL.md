@@ -77,7 +77,7 @@ What the script does (no need to replicate): slug validation → create `threads
 
 **Do not** append to transcript.md in a separate Edit call — `record-artifact --append` is the right skill for transcript additions during a session. `new-thread` just scaffolds.
 
-After success, **report.** Passthrough the script's stdout verbatim. No commentary about git, commits, or next steps. At verbosity=terse:
+After success, **report.** Echo the script's stdout in your response message verbatim — don't rely on the Bash tool's result card to display it; the user should see the script's output as part of your reply. No commentary about git, commits, or next steps. At verbosity=terse:
 
     ```
     Created thread '<slug>' at <brain>/threads/<slug>.

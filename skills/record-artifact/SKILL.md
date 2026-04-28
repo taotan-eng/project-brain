@@ -83,7 +83,7 @@ The script routes markdown inputs to `artifacts/` (frontmatter is injected, V-06
   [--by=<email>]
 ```
 
-After success, passthrough stdout verbatim. If the script exits 1 citing post-write validation errors, tell the user to run `verify-tree` for specifics.
+After success, echo the script's stdout in your response message verbatim — don't rely on the Bash tool's result card to display it; the user should see the script's output as part of your reply. If the script exits 1 citing post-write validation errors, surface that error AND tell the user to run `verify-tree` for specifics.
 
 ### Dry-run semantics
 
