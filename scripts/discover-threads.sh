@@ -267,16 +267,28 @@ def short_ts(ts):
     return (ts or "")[:19]
 
 def to_table(rs):
+    # Markdown table — renders cleanly in Cowork chat / Cursor / GitHub /
+    # any chat surface that handles markdown. The slug cell is wrapped in
+    # a clickable file:// link to the thread.md so the user can drill in
+    # one click. (Earlier ASCII-table renderer didn't expose a path at
+    # all — users had to guess where the thread lived.)
     if not rs:
-        return "(no threads matched)"
-    hdr = ["slug", "status", "maturity", "owner", "assigned_to", "modified", "tree_domain", "PR"]
-    widths = [len(h) for h in hdr]
-    body = []
+        return "_(no threads matched)_"
+    hdr = ["slug", "status", "maturity", "owner", "assigned", "modified", "domain", "PR"]
+    out = []
+    out.append("| " + " | ".join(hdr) + " |")
+    out.append("|" + "|".join(["---"] * len(hdr)) + "|")
     for r in rs:
         assigned = ",".join(r["assigned_to"]) if isinstance(r["assigned_to"], list) else (r["assigned_to"] or "")
         pr = "OPEN" if r["tree_prs"] else ""
+        # Absolute path to thread.md so file:// resolves outside the brain root.
+        # Backticks escaped (\`) — this heredoc is unquoted (so $BRAIN etc.
+        # expand), and bare backticks would be treated as bash command
+        # substitution. The escape preserves a literal backtick in the f-string.
+        abs_path = os.path.join(brain, r["path"])
+        slug_cell = f"[\`{r['slug']}\`](file://{abs_path})"
         row = [
-            r["slug"],
+            slug_cell,
             r["status"],
             r["maturity"] or "—",
             r["owner"] or "—",
@@ -285,17 +297,11 @@ def to_table(rs):
             r["tree_domain"] or "—",
             pr or "—",
         ]
-        body.append(row)
-        for i, c in enumerate(row):
-            widths[i] = max(widths[i], len(c))
-    out = []
-    sep = "  "
-    out.append(sep.join(h.ljust(widths[i]) for i, h in enumerate(hdr)))
-    out.append(sep.join("-" * widths[i] for i in range(len(hdr))))
-    for row in body:
-        out.append(sep.join(c.ljust(widths[i]) for i, c in enumerate(row)))
+        # Pipe characters in any cell would break the row — escape defensively.
+        row = [str(c).replace("|", "\\|") for c in row]
+        out.append("| " + " | ".join(row) + " |")
     out.append("")
-    out.append(f"{len(rs)} thread{'s' if len(rs) != 1 else ''} matched")
+    out.append(f"_{len(rs)} thread{'s' if len(rs) != 1 else ''} matched_")
     return "\n".join(out)
 
 def to_json(rs):

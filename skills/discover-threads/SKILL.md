@@ -71,11 +71,14 @@ The skill **refuses** if any of these are not met.
 
 ## Process
 
-> ### ⛔️ HARD CONSTRAINT — ONE TOOL CALL
+> ### ⛔️ HARD CONSTRAINT — ONE TOOL CALL + VERBATIM ECHO AS MARKDOWN
 >
 > **Call `${CLAUDE_PLUGIN_ROOT}/scripts/discover-threads.sh` ONCE.** No `Read` of thread.md files, no manual frontmatter parsing, no `glob` walks. The script enumerates threads, parses frontmatter, applies filters, sorts, and renders the result.
 >
-> **Echo the script's stdout in your response message verbatim** — don't summarize, transform, or rely on the Bash tool's result card to display it. The user should see the script's output as part of your reply.
+> **After the bash call returns, paste the script's stdout into your assistant message in full as Markdown — do NOT wrap it in a fenced code block.** In `--format=table` (default) the output is a Markdown table whose `slug` cells are clickable `file://` links to the thread.md; in `--format=json|csv|yaml|paths` the output is plain text. Either way, do not summarize and do not rely on the Bash tool's result card — it collapses by default. An empty (or fenced) assistant message means the user sees only "Ran a command >" with no detail.
+>
+> **WRONG** — empty assistant message, OR pasting inside `` ``` ... ``` ``: both kill table rendering and link clickability.
+> **RIGHT** — paste the stdout directly as the body of your reply. (For `json`/`csv`/`yaml` formats, a fenced code block is appropriate since those aren't meant to render as Markdown — but for the default `table` format, never fence.)
 >
 > **Derive flags from the user's question, not from defaults.** Examples:
 > - "what threads are assigned to alice" → `--assigned=alice`

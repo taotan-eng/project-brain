@@ -12,4 +12,4 @@ Run the `discover-threads` skill — pure read-only thread query. Invoke `${CLAU
 
 Default behavior (no flags) returns all non-archived threads sorted by `modified-desc`, in `table` format.
 
-**Echo the script's stdout in your response message verbatim** — don't rely on the Bash tool's result card to display it; the user should see the script's output as part of your reply. No additional commentary unless the user asks a follow-up.
+**Paste the script's stdout into your reply as Markdown — NOT inside a fenced code block** (the default `table` format is a Markdown table whose `slug` cells are clickable `file://` links; a `` ``` `` wrapper would prevent it from rendering). For `--format=json|csv|yaml|paths` outputs, fencing is fine — those aren't meant to render as Markdown. Don't rely on the Bash tool's result card to display it for you; it collapses by default. No additional commentary unless the user asks a follow-up.

@@ -232,25 +232,34 @@ if [[ -f "$TRANSCRIPT" ]]; then
 fi
 
 # ---------------------------------------------------------------------------
-# 6. Render the summary.
+# 6. Render the summary as Markdown so it renders nicely when the agent
+#    pastes stdout into chat. Two-space line endings on the meta block turn
+#    into <br>; bold labels keep each field on its own line without a list.
 # ---------------------------------------------------------------------------
 
-printf '# Thread: %s\n' "$SLUG"
-printf '  location:     %s/%s/\n' "$LOCATION" "$SLUG"
-[[ -n "$TITLE" ]]           && printf '  title:        %s\n' "$TITLE"
-[[ -n "$STATUS" ]]          && printf '  status:       %s' "$STATUS"
-[[ -n "$MATURITY" ]]        && printf ' / %s' "$MATURITY"
-[[ -n "$STATUS" ]]          && printf '\n'
-[[ -n "$PRIMARY_PROJECT" ]] && printf '  project:      %s\n' "$PRIMARY_PROJECT"
-[[ -n "$OWNER" ]]           && printf '  owner:        %s\n' "$OWNER"
-if [[ ${#ASSIGNED_TO[@]} -gt 0 ]]; then
-  printf '  assigned_to:  %s\n' "$(IFS=,; echo "${ASSIGNED_TO[*]}")"
+# Trailing two-space line endings — render as <br> in markdown.
+EOL='  '
+
+printf '# Thread: %s\n\n' "$SLUG"
+printf '**Location:** `%s/%s/`%s\n' "$LOCATION" "$SLUG" "$EOL"
+[[ -n "$TITLE" ]]           && printf '**Title:** %s%s\n' "$TITLE" "$EOL"
+if [[ -n "$STATUS" ]]; then
+  if [[ -n "$MATURITY" ]]; then
+    printf '**Status:** `%s / %s`%s\n' "$STATUS" "$MATURITY" "$EOL"
+  else
+    printf '**Status:** `%s`%s\n' "$STATUS" "$EOL"
+  fi
 fi
-[[ -n "$CREATED_AT" ]]   && printf '  created:      %s%s\n' \
-  "$CREATED_AT" "$( [[ -n "$CREATED_BY" ]] && printf ' by %s' "$CREATED_BY" )"
-[[ -n "$LAST_MOD_AT" ]]  && printf '  last_mod:     %s%s\n' \
-  "$LAST_MOD_AT" "$( [[ -n "$LAST_MOD_BY" ]] && printf ' by %s' "$LAST_MOD_BY" )"
-[[ -n "$PURPOSE" ]]      && printf '  purpose:      %s\n' "$PURPOSE"
+[[ -n "$PRIMARY_PROJECT" ]] && printf '**Project:** %s%s\n' "$PRIMARY_PROJECT" "$EOL"
+[[ -n "$OWNER" ]]           && printf '**Owner:** %s%s\n' "$OWNER" "$EOL"
+if [[ ${#ASSIGNED_TO[@]} -gt 0 ]]; then
+  printf '**Assigned to:** %s%s\n' "$(IFS=,; echo "${ASSIGNED_TO[*]}")" "$EOL"
+fi
+[[ -n "$CREATED_AT" ]]   && printf '**Created:** %s%s%s\n' \
+  "$CREATED_AT" "$( [[ -n "$CREATED_BY" ]] && printf ' by %s' "$CREATED_BY" )" "$EOL"
+[[ -n "$LAST_MOD_AT" ]]  && printf '**Last modified:** %s%s%s\n' \
+  "$LAST_MOD_AT" "$( [[ -n "$LAST_MOD_BY" ]] && printf ' by %s' "$LAST_MOD_BY" )" "$EOL"
+[[ -n "$PURPOSE" ]]      && printf '**Purpose:** %s%s\n' "$PURPOSE" "$EOL"
 
 # --------------------------------------------------------------------------
 # thread.md body — extract everything after the closing frontmatter delim.
@@ -268,34 +277,31 @@ BODY_LINE_COUNT=$(printf '%s' "$BODY" | grep -c .)
 OQ_FILE="$THREAD_DIR/open-questions.md"
 DC_FILE="$THREAD_DIR/decisions-candidates.md"
 
+# One-line counts summary — denser than a 6-line block, easier to scan.
 printf '\n'
-printf '  open questions:        %s\n' "$OQ_COUNT"
-printf '  decisions-candidates:  %s\n' "$DC_COUNT"
-printf '  artifacts:             %s\n' "${#ARTIFACTS[@]}"
-printf '  attachments:           %s\n' "${#ATTACHMENTS[@]}"
-printf '  body lines:            %s\n' "$BODY_LINE_COUNT"
-printf '  transcript entries:    %s' "$TRANSCRIPT_COUNT"
+printf '%s open questions · %s decisions-candidates · %s artifacts · %s attachments · %s body lines · %s transcript entries' \
+  "$OQ_COUNT" "$DC_COUNT" "${#ARTIFACTS[@]}" "${#ATTACHMENTS[@]}" "$BODY_LINE_COUNT" "$TRANSCRIPT_COUNT"
 [[ -n "$TRANSCRIPT_LAST_TS" ]] && printf ' (last at %s)' "$TRANSCRIPT_LAST_TS"
 printf '\n'
 
 # --------------------------------------------------------------------------
-# Files block — clickable computer:// links for every file the user is
-# likely to want to open directly. This is the default detail view: the
-# script can't show *everything*, but it can hand the user a one-click path
-# into each file. The earlier default ("body present, use --full") buried
-# the user's data; this surfaces it instead.
+# Files block — clickable file:// links for every file the user is likely
+# to want to open directly. file:// is RFC 8089 and renders clickably in
+# Cowork, Cursor, iTerm2, Windows Terminal, and most other modern hosts.
+# (Earlier versions emitted computer:// — Cowork-only — which broke when
+# users took the pack to Codex / Cursor / bare terminal sessions.)
 # --------------------------------------------------------------------------
 emit_link() {
   # $1 = label, $2 = absolute path, $3 = trailing annotation (optional)
   local label="$1" abs="$2" annot="${3:-}"
   if [[ -n "$annot" ]]; then
-    printf '  [%s](computer://%s) — %s\n' "$label" "$abs" "$annot"
+    printf -- '- [`%s`](file://%s) — %s\n' "$label" "$abs" "$annot"
   else
-    printf '  [%s](computer://%s)\n' "$label" "$abs"
+    printf -- '- [`%s`](file://%s)\n' "$label" "$abs"
   fi
 }
 
-printf '\nFiles:\n'
+printf '\n## Files\n\n'
 emit_link "thread.md" "$THREAD_MD" \
   "$( [[ $BODY_LINE_COUNT -gt 0 ]] && printf '%s body lines' "$BODY_LINE_COUNT" || printf 'frontmatter only' )"
 if [[ -f "$OQ_FILE" ]]; then
@@ -313,26 +319,37 @@ if [[ -f "$TRANSCRIPT" ]]; then
 fi
 
 if [[ ${#ARTIFACTS[@]} -gt 0 ]]; then
-  printf '\nArtifacts (%s):\n' "${#ARTIFACTS[@]}"
+  printf '\n## Artifacts (%s)\n\n' "${#ARTIFACTS[@]}"
   for p in "${ARTIFACTS[@]}"; do
     atitle="$(fm_scalar "$p" title)"
     akind="$(fm_scalar "$p" artifact_kind)"
     [[ -z "$akind" ]] && akind="-"
     [[ -z "$atitle" ]] && atitle="$(basename "$p" .md)"
     rel="$(realpath --relative-to="$THREAD_DIR" "$p")"
-    printf '  [%s](computer://%s) — [%s] %s\n' "$rel" "$p" "$akind" "$atitle"
+    printf -- '- [`%s`](file://%s) — *%s* — %s\n' "$rel" "$p" "$akind" "$atitle"
   done
 fi
 
 if [[ ${#ATTACHMENTS[@]} -gt 0 ]]; then
-  printf '\nAttachments (%s):\n' "${#ATTACHMENTS[@]}"
+  printf '\n## Attachments (%s)\n\n' "${#ATTACHMENTS[@]}"
   for p in "${ATTACHMENTS[@]}"; do
     rel="$(realpath --relative-to="$THREAD_DIR" "$p")"
     size_b="$(stat -c%s "$p" 2>/dev/null || stat -f%z "$p" 2>/dev/null || echo '?')"
     size_h="$(human_size "$size_b")"
-    printf '  [%s](computer://%s) — %s\n' "$rel" "$p" "$size_h"
+    printf -- '- [`%s`](file://%s) — %s\n' "$rel" "$p" "$size_h"
   done
 fi
+
+# --------------------------------------------------------------------------
+# Heading-demote helper — embedded files (thread.md body, transcript.md)
+# carry their own "## ..." headings. Without demotion they'd appear as
+# peer H2s of "## Files", flattening the hierarchy. Pre-demote one level
+# so they nest under the "## Body" / "## Transcript" wrapper headers we
+# emit below.
+# --------------------------------------------------------------------------
+demote_headings() {
+  awk '/^#+ / { print "#" $0; next } { print }'
+}
 
 # --------------------------------------------------------------------------
 # Body rendering. --full dumps the entire body verbatim. Default mode is
@@ -340,8 +357,8 @@ fi
 # count, so an extra "body present" hint would be redundant.
 # --------------------------------------------------------------------------
 if [[ $FULL -eq 1 && $BODY_LINE_COUNT -gt 0 ]]; then
-  printf '\n----- thread.md body -----\n'
-  printf '%s\n' "$BODY"
+  printf '\n## Body of thread.md\n\n'
+  printf '%s\n' "$BODY" | demote_headings
 fi
 
 if [[ $TRANSCRIPT_COUNT -eq 0 ]]; then
@@ -349,20 +366,24 @@ if [[ $TRANSCRIPT_COUNT -eq 0 ]]; then
 fi
 
 # Transcript rendering:
-#  --full   → dump entire file verbatim (prefixed with a marker line)
-#  default  → last $LAST entries, filtered by --since
+#  --full   → dump entire file verbatim (under a "## Transcript (full)" wrapper)
+#  default  → last $LAST entries (or --since-filtered) under a "## Transcript (latest N of M)" wrapper
+# Embedded entries originally start at "## " (per CONVENTIONS § 2.5); we
+# demote them by one level so they nest as "### " under the wrapper H2.
 render_transcript() {
   if [[ $FULL -eq 1 ]]; then
-    printf '\n----- transcript.md (full) -----\n'
-    cat "$TRANSCRIPT"
+    printf '\n## Transcript (full, %s entries)\n\n' "$TRANSCRIPT_COUNT"
+    demote_headings < "$TRANSCRIPT"
     return
   fi
   # Emit entries (each is an H2 block + its body until the next H2 or EOF).
   # First pass: collect entries with their timestamps. Second pass: filter +
-  # slice. Implemented in awk for single-pass portability.
-  awk -v last="$LAST" -v since="$SINCE" '
+  # slice. Implemented in awk for single-pass portability. The wrapper
+  # header is printed by bash (NOT demoted); the entry blocks are demoted
+  # so their "## " becomes "### " under the wrapper.
+  local selected
+  selected="$(awk -v last="$LAST" -v since="$SINCE" '
     function flush(block, ts,    out) {
-      # Append to an array indexed by insertion order.
       n_entries++
       entries[n_entries] = block
       timestamps[n_entries] = ts
@@ -395,14 +416,27 @@ render_transcript() {
         if (n_entries - start + 1 > last) start = n_entries - last + 1
       }
       if (start > n_entries) {
-        print "  (no transcript entries match --since=" since ")"
+        printf "__NO_MATCH__\n"
         exit
       }
-      printf "\n----- transcript.md (entries %d–%d of %d) -----\n", \
-        start, n_entries, n_entries
+      shown = n_entries - start + 1
+      printf "__SHOWN__:%d:%d\n", shown, n_entries
       for (i=start; i<=n_entries; i++) printf "%s", entries[i]
     }
-  ' "$TRANSCRIPT"
+  ' "$TRANSCRIPT")"
+
+  if [[ "$selected" == "__NO_MATCH__"* ]]; then
+    printf '\n## Transcript\n\n_(no transcript entries match --since=%s)_\n' "$SINCE"
+    return
+  fi
+
+  # First line of $selected is "__SHOWN__:N:TOTAL" — strip and use it.
+  local first_line shown total_n body
+  first_line="${selected%%$'\n'*}"
+  body="${selected#*$'\n'}"
+  IFS=':' read -r _ shown total_n <<< "$first_line"
+  printf '\n## Transcript (latest %s of %s)\n\n' "$shown" "$total_n"
+  printf '%s' "$body" | demote_headings
 }
 
 render_transcript
