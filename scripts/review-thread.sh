@@ -266,9 +266,38 @@ if [[ ${#ATTACHMENTS[@]} -gt 0 ]]; then
   done
 fi
 
+# --------------------------------------------------------------------------
+# thread.md body — extract everything after the closing frontmatter delim.
+# Threads commonly carry their substantive content here (per CONVENTIONS:
+# "thread.md = frontmatter + freeform notes"); review-thread previously
+# only read frontmatter scalars and rendered transcript+artifacts, leaving
+# threads with body-only content looking nearly empty.
+# --------------------------------------------------------------------------
+extract_body() {
+  awk 'BEGIN{c=0} /^---[[:space:]]*$/ && c<2 {c++; next} c>=2 {print}' "$1"
+}
+BODY="$(extract_body "$THREAD_MD")"
+BODY_LINE_COUNT=$(printf '%s' "$BODY" | grep -c .)
+
+# Body summary line, sits in the counts block.
+printf '  body lines:           %s\n' "$BODY_LINE_COUNT"
+
 printf '\nTranscript:  %s entries' "$TRANSCRIPT_COUNT"
 [[ -n "$TRANSCRIPT_LAST_TS" ]] && printf ', last at %s' "$TRANSCRIPT_LAST_TS"
 printf '\n'
+
+# --------------------------------------------------------------------------
+# Body rendering. --full dumps the entire body verbatim. Default mode emits
+# a short hint so the user knows there's content there without the full dump.
+# --------------------------------------------------------------------------
+if [[ $FULL -eq 1 ]]; then
+  if [[ $BODY_LINE_COUNT -gt 0 ]]; then
+    printf '\n----- thread.md body -----\n'
+    printf '%s\n' "$BODY"
+  fi
+elif [[ $BODY_LINE_COUNT -gt 0 ]]; then
+  printf '             body present (use --full to dump %s lines of thread.md)\n' "$BODY_LINE_COUNT"
+fi
 
 if [[ $TRANSCRIPT_COUNT -eq 0 ]]; then
   exit 0
