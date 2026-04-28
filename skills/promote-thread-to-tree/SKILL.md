@@ -59,21 +59,42 @@ The skill **refuses** if any of these are not met.
 
 ## Process
 
-> ### ⛔️ HARD CONSTRAINT — TREE DOMAIN MUST COME FROM THE USER, NEVER FROM YOU
+> ### ⛔️ HARD CONSTRAINT — STEP 0: ASK THE USER FIRST. ALWAYS.
 >
-> The pack ships with **no default tree taxonomy**. Domains exist only when the user has explicitly named one. The agent must elicit the user's choice — never infer it.
+> **The very first thing this skill does is invoke `AskUserQuestion` for the destination tree domain.** Not after staging. Not after mode dispatch. Not after probing config. Step 0, before any other tool call. The user's verbatim answer is the only valid source for the domain — period.
 >
-> Before staging any leaf, resolve the destination domain in this exact order:
+> **Phrasing of the AskUserQuestion** (use exactly this):
 >
-> 1. If the user's current invocation supplied an explicit domain (CLI flag, prose like "promote into `<dir>/`"), use that.
-> 2. Else, if the source thread's frontmatter has a non-empty `tree_domain` AND that value was last edited *by the user* (i.e., it predates this turn — you can see it in your initial Read of the file, you didn't write it yourself in this session), you MAY treat it as the user's prior-blessed default. Confirm before proceeding: "I see `tree_domain: <X>` on this thread — should this leaf land there? Or somewhere else?"
-> 3. Else, **ask the user via `AskUserQuestion`** — present the existing top-level entries under `project-brain/tree/` (just `ls`) plus an "other (type one)" option. Phrasing: "What folder under `tree/` should this leaf land in? Pick an existing one, or name a new one — the taxonomy is yours."
+> > "What folder under `tree/` should this leaf land in? Pick an existing one, or name a new one — the taxonomy is yours."
 >
-> **Do NOT infer a domain from the thread's content topic.** A thread about hardware is NOT automatically an `engineering/` thread; a hiring thread is NOT automatically `hr/` or `people/`. Every example you see in this SKILL.md or any other doc — including `<your-domain>`, `<sub-area>`, etc. — is placeholder syntax, never a literal.
+> Show the existing top-level entries from `ls project-brain/tree/` as pill options, plus an "other (type one)" free-text option. Do NOT pre-select a default. Do NOT suggest one in the question text.
 >
-> **Do NOT "self-serve" by writing `tree_domain` to the thread to satisfy the script's guardrail.** This is a known agent failure mode: agent stages into the wrong folder, script refuses with a remediation message, agent edits thread.md to add `tree_domain: <X>`, re-runs. The script doesn't actually accept frontmatter as consent — it only honors `--allow-domain=<X>` (which is visible in the bash tool-call audit). If the script refuses, **come back to the user** and ask. Don't loop on workarounds.
+> **No fallback chain. No exceptions.** If you find yourself reasoning "but `tree_domain` is set on the thread, so I can skip the question," STOP. The thread frontmatter is documentation written by you in a prior turn; it does not carry user authority. If you find yourself reasoning "but only one folder exists in `tree/`, so the answer is obvious," STOP. The user might want to start a new folder. If you find yourself reasoning "but the thread content topic clearly maps to `<X>`," STOP. Topic inference is exactly the failure mode this rule exists to block.
 >
-> Backstop: `promote-local.sh` refuses to land into ANY `tree/<name>/` folder unless `--allow-domain=<name>` was passed on the script invocation. Folder existence on disk is NOT consent. Thread `tree_domain` is documentation (the agent's memory of past blessed choices) but is NOT script-level authority. The ONLY consent path the script accepts is the `--allow-domain` flag, whose value must match the user's stated preference.
+> **Forbidden value sources for the destination domain (every one of these has been observed as a real bypass):**
+>   - Thread frontmatter `tree_domain` field — writable by you; not authority.
+>   - Existing folder list under `tree/` — agent picks "the only one" without asking.
+>   - Prior `promoted_to` entries on this thread — agent extrapolates pattern.
+>   - Thread content topic — "this thread is about hardware → `engineering/`".
+>   - Prior conversation turns — "the user said `engineering` last week."
+>   - Anything else you can derive without invoking `AskUserQuestion` THIS TURN.
+>
+> **Only valid value source:** the user's answer to `AskUserQuestion`, in this turn, captured as a string and passed verbatim through every downstream step (staging path, `--allow-domain` flag, leaf frontmatter `domain` field).
+>
+> Backstop: `promote-local.sh` refuses to run unless `--allow-domain=<X>` is passed and matches the staged path's top-level. The error message does not document a workaround — if you arrive at the refusal without having invoked `AskUserQuestion` in this turn, the only recovery is to invoke it now and re-run with the user's answer.
+
+### Step 0 — ASK THE USER (mandatory, unconditional, before anything else)
+
+```
+ls project-brain/tree/                     # gather existing folders for the question
+AskUserQuestion(
+  question = "What folder under `tree/` should this leaf land in? "
+             "Pick an existing one, or name a new one — the taxonomy is yours.",
+  options  = [<existing folders from ls>, "other (type one)"]
+)
+```
+
+Capture the user's answer. Use it as `$DOMAIN` for every subsequent step. Do not modify, abbreviate, infer-from, or fall-back-from the answer.
 
 ### Mode dispatch
 

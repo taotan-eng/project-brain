@@ -110,6 +110,60 @@ if [[ ${#STAGED[@]} -eq 0 ]]; then
 fi
 
 # ---------------------------------------------------------------------------
+# Slug validation — every staged leaf slug AND its domain path must be
+# ASCII kebab-case (per CONVENTIONS § 11.1 + verify-tree N-01). Catching
+# non-ASCII slugs here gives a clear early error instead of waiting until
+# verify-tree complains post-promotion. Common trip: a user names a
+# thread/leaf in Chinese / Cyrillic / accented Latin and the validator
+# rejects it later with a less-obvious message. Also catches uppercase,
+# underscores, and other non-kebab patterns.
+# ---------------------------------------------------------------------------
+SLUG_RE='^[a-z][a-z0-9]*(-[a-z0-9]+)*$'
+for entry in "${STAGED[@]}"; do
+  full_domain="$(echo "$entry" | cut -d'|' -f1)"
+  leaf_slug="$(echo "$entry" | cut -d'|' -f2)"
+
+  # Each path segment in the domain must be a valid slug.
+  IFS='/' read -r -a domain_parts <<< "$full_domain"
+  for seg in "${domain_parts[@]}"; do
+    if [[ ! "$seg" =~ $SLUG_RE ]]; then
+      cat >&2 <<EOF
+error: invalid domain segment '${seg}' in staged path 'tree-staging/${full_domain}/${leaf_slug}.md'.
+
+  Domain folder names must be ASCII kebab-case per CONVENTIONS § 11.1:
+      pattern: ^[a-z][a-z0-9]*(-[a-z0-9]+)*$
+      examples (valid):   auth, data-model, runtime-v2, ai-systems
+      examples (invalid): Auth, data_model, 认证, runtime/v2, -leading-dash
+
+  Why ASCII-only: cross-platform filesystem compatibility (case-insensitive
+  filesystems, Windows reserved chars), URL-safe tree paths, and
+  predictable verify-tree N-01 enforcement. Translate the segment to ASCII
+  (transliterate, abbreviate, or use a domain-specific code) before staging.
+EOF
+      exit 1
+    fi
+  done
+
+  if [[ ! "$leaf_slug" =~ $SLUG_RE ]]; then
+    cat >&2 <<EOF
+error: invalid leaf slug '${leaf_slug}' in staged path 'tree-staging/${full_domain}/${leaf_slug}.md'.
+
+  Leaf filenames must be ASCII kebab-case per CONVENTIONS § 11.1:
+      pattern: ^[a-z][a-z0-9]*(-[a-z0-9]+)*$
+      examples (valid):   alpha-decision, runtime-contract-v2, q4-plan
+      examples (invalid): Alpha, alpha_decision, 决策, runtime contract
+
+  Why ASCII-only: cross-platform filesystem compatibility (case-insensitive
+  filesystems, Windows reserved chars), URL-safe tree paths, and
+  predictable verify-tree N-01 enforcement. Rename the staged file to an
+  ASCII slug before re-running. (The leaf's H1 title can stay in any
+  script — only the filename needs to be kebab-case ASCII.)
+EOF
+    exit 1
+  fi
+done
+
+# ---------------------------------------------------------------------------
 # Domain-consent guardrail — every promotion's destination domain must be
 # explicitly consented to via the `--allow-domain=<X>` flag on THIS script
 # invocation. The flag is the ONLY consent path the script honors.
@@ -160,39 +214,31 @@ for entry in "${STAGED[@]}"; do
     continue
   fi
 
-  # No consent for this domain. Refuse.
+  # No consent. Refuse. NOTE: this error message deliberately does NOT
+  # describe a remediation recipe. Earlier versions said "agent: ask the
+  # user, then pass --allow-domain=<answer>" — and observed agents read
+  # that as a checklist and self-served the flag value from context
+  # (existing tree/ folders, prior promotions, frontmatter, content
+  # topic) instead of actually invoking AskUserQuestion. Stripping the
+  # recipe leaves the agent with no documented workaround; the only
+  # remaining path is back to the SKILL.md's HARD CONSTRAINT, which says
+  # AskUserQuestion is the unconditional first action.
   cat >&2 <<EOF
-error: refusing to land into tree/${toplevel}/ — domain not consented.
+REFUSED: cannot land tree/${toplevel}/<leaf>.md.
 
-  No --allow-domain=${toplevel} flag on this invocation, so the script
-  has no authority to land a leaf into tree/${toplevel}/. The agent that
-  staged the leaf was supposed to ask the user for the destination (via
-  the promote-thread-to-tree skill's domain-resolution protocol) and
-  pass the user's answer as --allow-domain=<their-answer>. It didn't,
-  so we're stopping before any file moves.
+  Reason: --allow-domain=${toplevel} was not passed on this invocation.
 
-  ─── If you are the agent reading this ─────────────────────────────
-  Do NOT "fix" this by editing the thread's frontmatter to add
-  tree_domain: ${toplevel} — the script does not read frontmatter as
-  consent (frontmatter is writable by you, so it can't carry user
-  authority). The ONLY remediation is:
+  This script does not document any workaround. The destination domain
+  is owned by the user and must come from a fresh AskUserQuestion in
+  this turn. Inferring the flag value from any other source — existing
+  tree/ folders, prior promotions, thread frontmatter, thread content,
+  prior conversation context — is a violation of the promote-thread-
+  to-tree skill's HARD CONSTRAINT (skills/promote-thread-to-tree/
+  SKILL.md § Process step 0).
 
-      1. Invoke AskUserQuestion to ask the user where this leaf should
-         live. Show them existing tree/ folders (\`ls tree/\`) plus an
-         "other (type one)" option. Don't suggest a default.
-      2. Wait for their answer.
-      3. Re-invoke this script with --allow-domain=<their-answer>.
-      4. (Optional, for future-promotion convenience: also write
-         tree_domain: <their-answer> to thread.md so future agent runs
-         can construct --allow-domain= without re-asking. This is
-         documentation, not consent.)
-
-  ─── If you are the user reading this ─────────────────────────────
-  Either:
-      a) The agent staged into tree/${toplevel}/ on its own guess — tell
-         it where you actually want the leaf.
-      b) "${toplevel}" IS your real choice — re-invoke with
-            --allow-domain=${toplevel}
+  No file moves have occurred. To proceed, invoke AskUserQuestion for
+  the destination, wait for the user's answer, and pass that verbatim
+  answer as --allow-domain=<answer>. Do not derive the value yourself.
 EOF
   exit 1
 done

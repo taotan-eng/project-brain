@@ -125,9 +125,32 @@ if [[ -z "$PRIMARY_PROJECT" ]]; then
   exit 2
 fi
 
-# Slug validation per § 11.1
+# Slug validation per § 11.1.
+# Common trip: a user names a thread in Chinese / Cyrillic / accented Latin
+# and the regex rejects them with a one-liner that doesn't explain why.
+# The expanded message points at the concrete reasons (cross-platform FS,
+# URL-safe paths, N-01 enforcement) and suggests the fix.
 if [[ ! "$SLUG" =~ ^[a-z][a-z0-9]*(-[a-z0-9]+)*$ ]]; then
-  echo "error: --slug '$SLUG' is not a valid kebab-case slug." >&2
+  cat >&2 <<EOF
+error: --slug '$SLUG' is not a valid kebab-case slug per CONVENTIONS § 11.1.
+
+  Required pattern: ^[a-z][a-z0-9]*(-[a-z0-9]+)*\$
+  Valid examples:    auth-rotation, q4-plan, runtime-v2, hire-mlops-2
+  Invalid examples:  Auth, hire_mlops, 招聘-mlops, hire mlops, -leading-dash
+
+  Why ASCII-only:
+    - Cross-platform filesystem compatibility (case-insensitive FS on
+      macOS/Windows; Windows reserved characters; mojibake risk on
+      non-UTF-8 shells).
+    - URL-safe paths in tree/<domain>/<leaf>.md → links never need
+      percent-encoding.
+    - verify-tree's N-01 invariant rejects anything else, so a non-ASCII
+      slug would fail at promote-time instead of new-thread time.
+
+  Translate or transliterate the slug to ASCII kebab-case. The thread's
+  H1 title and body content can be in any script — only the slug (which
+  becomes a directory name) needs to be ASCII.
+EOF
   exit 2
 fi
 
