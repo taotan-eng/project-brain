@@ -110,58 +110,41 @@ if [[ ${#STAGED[@]} -eq 0 ]]; then
 fi
 
 # ---------------------------------------------------------------------------
-# Slug validation — every staged leaf slug AND its domain path must be
-# ASCII kebab-case (per CONVENTIONS § 11.1 + verify-tree N-01). Catching
-# non-ASCII slugs here gives a clear early error instead of waiting until
-# verify-tree complains post-promotion. Common trip: a user names a
-# thread/leaf in Chinese / Cyrillic / accented Latin and the validator
-# rejects it later with a less-obvious message. Also catches uppercase,
-# underscores, and other non-kebab patterns.
+# Slug validation — every staged leaf slug AND its domain path segments
+# must satisfy the Unicode-friendly kebab-case rule from CONVENTIONS § 11.1
+# (verify-tree's N-01 / V-21 invariants). Shell out to _validate_slug.py
+# for the canonical check (single source of truth across scripts).
+# Catching invalid slugs here gives a clear early error instead of waiting
+# until verify-tree complains post-promotion.
 # ---------------------------------------------------------------------------
-SLUG_RE='^[a-z][a-z0-9]*(-[a-z0-9]+)*$'
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+VALIDATE_SLUG="${SCRIPT_DIR}/_validate_slug.py"
+
 for entry in "${STAGED[@]}"; do
   full_domain="$(echo "$entry" | cut -d'|' -f1)"
   leaf_slug="$(echo "$entry" | cut -d'|' -f2)"
 
-  # Each path segment in the domain must be a valid slug.
+  # Each segment of the domain path must be a valid slug.
   IFS='/' read -r -a domain_parts <<< "$full_domain"
   for seg in "${domain_parts[@]}"; do
-    if [[ ! "$seg" =~ $SLUG_RE ]]; then
-      cat >&2 <<EOF
-error: invalid domain segment '${seg}' in staged path 'tree-staging/${full_domain}/${leaf_slug}.md'.
-
-  Domain folder names must be ASCII kebab-case per CONVENTIONS § 11.1:
-      pattern: ^[a-z][a-z0-9]*(-[a-z0-9]+)*$
-      examples (valid):   auth, data-model, runtime-v2, ai-systems
-      examples (invalid): Auth, data_model, 认证, runtime/v2, -leading-dash
-
-  Why ASCII-only: cross-platform filesystem compatibility (case-insensitive
-  filesystems, Windows reserved chars), URL-safe tree paths, and
-  predictable verify-tree N-01 enforcement. Translate the segment to ASCII
-  (transliterate, abbreviate, or use a domain-specific code) before staging.
-EOF
+    if ! python3 "$VALIDATE_SLUG" "$seg" >/dev/null 2>/tmp/slug-err.$$; then
+      printf 'error: invalid domain segment in staged path tree-staging/%s/%s.md:\n\n' \
+        "$full_domain" "$leaf_slug" >&2
+      cat /tmp/slug-err.$$ >&2
+      rm -f /tmp/slug-err.$$
       exit 1
     fi
   done
 
-  if [[ ! "$leaf_slug" =~ $SLUG_RE ]]; then
-    cat >&2 <<EOF
-error: invalid leaf slug '${leaf_slug}' in staged path 'tree-staging/${full_domain}/${leaf_slug}.md'.
-
-  Leaf filenames must be ASCII kebab-case per CONVENTIONS § 11.1:
-      pattern: ^[a-z][a-z0-9]*(-[a-z0-9]+)*$
-      examples (valid):   alpha-decision, runtime-contract-v2, q4-plan
-      examples (invalid): Alpha, alpha_decision, 决策, runtime contract
-
-  Why ASCII-only: cross-platform filesystem compatibility (case-insensitive
-  filesystems, Windows reserved chars), URL-safe tree paths, and
-  predictable verify-tree N-01 enforcement. Rename the staged file to an
-  ASCII slug before re-running. (The leaf's H1 title can stay in any
-  script — only the filename needs to be kebab-case ASCII.)
-EOF
+  if ! python3 "$VALIDATE_SLUG" "$leaf_slug" >/dev/null 2>/tmp/slug-err.$$; then
+    printf 'error: invalid leaf slug in staged path tree-staging/%s/%s.md:\n\n' \
+      "$full_domain" "$leaf_slug" >&2
+    cat /tmp/slug-err.$$ >&2
+    rm -f /tmp/slug-err.$$
     exit 1
   fi
 done
+rm -f /tmp/slug-err.$$ 2>/dev/null || true
 
 # ---------------------------------------------------------------------------
 # Domain-consent guardrail — every promotion's destination domain must be

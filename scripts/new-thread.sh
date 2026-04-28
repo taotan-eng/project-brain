@@ -125,34 +125,22 @@ if [[ -z "$PRIMARY_PROJECT" ]]; then
   exit 2
 fi
 
-# Slug validation per § 11.1.
-# Common trip: a user names a thread in Chinese / Cyrillic / accented Latin
-# and the regex rejects them with a one-liner that doesn't explain why.
-# The expanded message points at the concrete reasons (cross-platform FS,
-# URL-safe paths, N-01 enforcement) and suggests the fix.
-if [[ ! "$SLUG" =~ ^[a-z][a-z0-9]*(-[a-z0-9]+)*$ ]]; then
-  cat >&2 <<EOF
-error: --slug '$SLUG' is not a valid kebab-case slug per CONVENTIONS § 11.1.
-
-  Required pattern: ^[a-z][a-z0-9]*(-[a-z0-9]+)*\$
-  Valid examples:    auth-rotation, q4-plan, runtime-v2, hire-mlops-2
-  Invalid examples:  Auth, hire_mlops, 招聘-mlops, hire mlops, -leading-dash
-
-  Why ASCII-only:
-    - Cross-platform filesystem compatibility (case-insensitive FS on
-      macOS/Windows; Windows reserved characters; mojibake risk on
-      non-UTF-8 shells).
-    - URL-safe paths in tree/<domain>/<leaf>.md → links never need
-      percent-encoding.
-    - verify-tree's N-01 invariant rejects anything else, so a non-ASCII
-      slug would fail at promote-time instead of new-thread time.
-
-  Translate or transliterate the slug to ASCII kebab-case. The thread's
-  H1 title and body content can be in any script — only the slug (which
-  becomes a directory name) needs to be ASCII.
-EOF
+# Slug validation per § 11.1 — Unicode-friendly kebab-case.
+# Shell out to _validate_slug.py for the canonical check + NFC normalization.
+# (Doing this in bash directly is unreliable: macOS ships bash 3.2 with
+# limited Unicode regex; the Python helper is the single source of truth
+# for slug rules across all scripts.) On success the helper prints the
+# NFC-normalized slug to stdout; on failure it prints the error to stderr
+# and exits 1. We capture stdout into a temp file so we can both forward
+# stderr to the user AND read the normalized form on success.
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+_validate_tmp="$(mktemp)"
+if ! python3 "${SCRIPT_DIR}/_validate_slug.py" "$SLUG" >"$_validate_tmp"; then
+  rm -f "$_validate_tmp"
   exit 2
 fi
+SLUG="$(cat "$_validate_tmp")"
+rm -f "$_validate_tmp"
 
 THREAD_DIR="${BRAIN}/threads/${SLUG}"
 if [[ -e "$THREAD_DIR" ]]; then

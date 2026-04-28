@@ -142,11 +142,15 @@ if [[ -z "$PROJECT_TITLE" ]]; then
     | awk '{for(i=1;i<=NF;i++){$i=toupper(substr($i,1,1)) tolower(substr($i,2))}; print}')"
 fi
 
-# Slug sanity check
-if [[ ! "$PROJECT_ALIAS" =~ ^[a-z][a-z0-9]*(-[a-z0-9]+)*$ ]]; then
-  echo "error: --alias '$PROJECT_ALIAS' is not a valid slug (CONVENTIONS § 11.1)." >&2
+# Slug sanity check — Unicode-friendly kebab-case via _validate_slug.py.
+SCRIPT_DIR_INIT="$(cd "$(dirname "$0")" && pwd)"
+_alias_tmp="$(mktemp)"
+if ! python3 "${SCRIPT_DIR_INIT}/_validate_slug.py" "$PROJECT_ALIAS" >"$_alias_tmp"; then
+  rm -f "$_alias_tmp"
   exit 2
 fi
+PROJECT_ALIAS="$(cat "$_alias_tmp")"
+rm -f "$_alias_tmp"
 
 BRAIN_PATH="${PROJECT_HOME}/project-brain"
 
@@ -210,10 +214,13 @@ touch \
 # Optional explicit initial domain — only when users pass --domain
 # explicitly. Rare; default is to skip.
 if [[ -n "$DOMAIN" ]]; then
-  if [[ ! "$DOMAIN" =~ ^[a-z][a-z0-9]*(-[a-z0-9]+)*$ ]]; then
-    echo "error: --domain '$DOMAIN' is not a valid slug." >&2
+  _domain_tmp="$(mktemp)"
+  if ! python3 "${SCRIPT_DIR_INIT}/_validate_slug.py" "$DOMAIN" >"$_domain_tmp"; then
+    rm -f "$_domain_tmp"
     exit 2
   fi
+  DOMAIN="$(cat "$_domain_tmp")"
+  rm -f "$_domain_tmp"
   mkdir -p "${BRAIN_PATH}/tree/${DOMAIN}"
   cp "${ASSETS}/NODE-template.md" "${BRAIN_PATH}/tree/${DOMAIN}/NODE.md"
   NODE_ID="node-${PROJECT_ALIAS}-${DOMAIN}"

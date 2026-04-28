@@ -720,10 +720,24 @@ Skills share these naming rules. Deviation from reserved filenames or directory 
 
 Used as `id` in frontmatter, directory names under `threads/`, filenames for leaves, and in branch and PR construction.
 
-- Lowercase, kebab-case.
-- Characters: `[a-z0-9-]`. Must start with a letter. No leading or trailing hyphens; no double hyphens.
-- Length: 3–40 characters. Short-and-memorable beats descriptive — the title carries the long form.
-- Collision: if `<slug>` already exists, the skill that generated it appends `-2`, `-3`, … and asks the user to confirm.
+**Unicode-friendly kebab-case.** The pack supports any script — Latin, CJK (Chinese/Japanese/Korean), Cyrillic, Arabic, accented Latin, etc. — so non-English projects don't have to transliterate slugs to ASCII. Implementation: `scripts/_validate_slug.py` is the single source of truth, called by every script that creates or validates a slug.
+
+Rules:
+- **Forbidden characters:** ASCII uppercase A-Z (Latin scripts must be lowercase; non-Latin scripts that have no case distinction pass freely), whitespace, filesystem-reserved chars (`/\:*?"<>|`), control characters.
+- **Kebab shape:** segments separated by single hyphens. No leading hyphen, no trailing hyphen, no doubled hyphens (`--`).
+- **Length:** 2–40 characters (Unicode codepoints, not bytes). The 2-char floor accommodates CJK 2-char compounds like 旅行 (travel), 认证 (authentication), 决策 (decision) — semantically dense words Latin scripts express in 5–10 letters.
+- **Normalization:** input is NFC-normalized at write-time. (macOS APFS may store as NFD; tooling reads as NFC. Cross-platform git-pull edge cases are best-effort.)
+- **Collision:** if `<slug>` already exists, the skill that generated it appends `-2`, `-3`, … and asks the user to confirm.
+
+Examples (valid): `auth`, `auth-rotation`, `runtime-v2`, `q4-plan`, `ai`, `ml`, `香港转机`, `旅行`, `データ-モデル`, `認証`, `café-2`, `проект`.
+
+Examples (invalid): `Auth` (uppercase), `auth_rotation` (underscore), `-leading` (leading hyphen), `trailing-` (trailing hyphen), `dou--ble` (doubled hyphen), `runtime/v2` (slash), `' spaces '` (whitespace), `a` (too short).
+
+Why these constraints exist:
+- ASCII uppercase forbidden → keeps slugs distinguishable on case-insensitive filesystems (macOS APFS, Windows NTFS by default).
+- FS-reserved chars forbidden → cross-platform path safety.
+- Whitespace forbidden → URL-safety and shell-quoting safety.
+- Hyphen shape → predictable structure for tools that split slugs into segments (e.g., `promote/<slug>-<wave>` branch construction).
 
 ### 11.2 Reserved filenames
 

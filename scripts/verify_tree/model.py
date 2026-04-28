@@ -17,13 +17,81 @@ EXIT_VIOLATIONS = 1
 EXIT_INVOCATION = 2
 
 # Regex patterns
+
+# SLUG_FORBIDDEN_RE catches characters that are never allowed in a slug:
+# ASCII uppercase A-Z (we preserve the "lower" of kebab-case for Latin
+# scripts), whitespace, FS-reserved chars (/\:*?"<>|), and ASCII control
+# chars. Unicode letters/digits in any script are fine. Use is_valid_slug()
+# below for the full check (length + forbidden chars + kebab shape).
+SLUG_FORBIDDEN_RE = re.compile(r'[A-Z\s/\\:*?"<>|\x00-\x1f]')
+
+# Legacy ASCII-only slug regex, retained for callers that explicitly want
+# ASCII-only behavior (none in-tree as of this revision; kept for any
+# external project's verify-tree.d/ extension hooks that may import it).
 SLUG_RE = re.compile(r"^[a-z][a-z0-9]*(-[a-z0-9]+)*$")
+
+# PATH_COMPONENT_FORBIDDEN_RE — same forbidden set as slugs, applied to
+# every path segment under project-brain/. Replaces the earlier ASCII-only
+# rule. Allows Unicode dirnames, e.g. tree/<chinese>/leaf.md.
+PATH_COMPONENT_FORBIDDEN_RE = re.compile(r'[\s/\\:*?"<>|\x00-\x1f]')
+
+# Legacy ASCII-only path-component regex, retained for backwards compat.
 ASCII_NAME_RE = re.compile(r"^[a-zA-Z0-9_-]+(\.[a-zA-Z0-9_-]+)?$")
+
 ROUND_DIR_RE = re.compile(r"^round-\d{2}$")
 ISO8601_RE = re.compile(
     r"^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}"
     r"(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?$"
 )
+
+
+def is_valid_slug(s: str) -> bool:
+    """Validate a slug per CONVENTIONS § 11.1 (Unicode-friendly kebab-case).
+
+    Rules:
+      - 2-40 characters (Unicode codepoint count, not byte count). The
+        2-char floor accommodates CJK 2-char compounds like 旅行 (travel),
+        认证 (authentication), 决策 (decision) — semantically dense words
+        Latin scripts express in 5-10 letters. ASCII users can also use
+        2-char slugs like "ai" or "ml" if they want.
+      - No ASCII uppercase A-Z. (Latin scripts must be lowercase; non-Latin
+        scripts that have no case distinction pass freely.)
+      - No whitespace, no FS-reserved chars (/\\:*?"<>|), no control chars.
+      - Kebab shape: segments separated by single hyphens; no leading,
+        trailing, or doubled hyphens.
+      - Caller's responsibility: NFC-normalize the input first. We don't
+        re-normalize here because the same string in NFC vs NFD has
+        different lengths and we'd lie to the caller about validity.
+
+    Examples (valid): ai, ml, auth, auth-rotation, runtime-v2,
+                      香港转机, 旅行, データ-モデル, café-2
+    Examples (invalid): Auth, auth_rotation, -leading, trailing-, dou--ble,
+                        runtime/v2, ' spaces ', 'a' (too short)
+    """
+    if not isinstance(s, str):
+        return False
+    if not (2 <= len(s) <= 40):
+        return False
+    if SLUG_FORBIDDEN_RE.search(s):
+        return False
+    parts = s.split("-")
+    if any(p == "" for p in parts):
+        return False
+    return True
+
+
+def is_valid_path_component(p: str) -> bool:
+    """Validate a path component (file/dir name) per CONVENTIONS § 11
+    (V-21). Same forbidden set as slugs, but more permissive on shape:
+    leading/trailing dashes, dots (extensions), and underscores are fine.
+
+    Used by V-21 to gate every path segment under project-brain/.
+    """
+    if not isinstance(p, str) or p == "":
+        return False
+    if PATH_COMPONENT_FORBIDDEN_RE.search(p):
+        return False
+    return True
 
 # CONVENTIONS § 11.2 / 11.3 reserved identifiers
 RESERVED_FILENAMES = {

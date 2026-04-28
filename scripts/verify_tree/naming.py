@@ -15,8 +15,9 @@ from .model import (
     RESERVED_DIRS,
     RESERVED_FILENAMES,
     ROUND_DIR_RE,
-    SLUG_RE,
+    SLUG_RE,  # legacy ASCII-only, retained for back-compat / extension hooks
     Artifact,
+    is_valid_slug,
 )
 
 
@@ -27,11 +28,17 @@ class NamingMixin:
         aid = a.frontmatter.get("id")
         if not isinstance(aid, str):
             return  # handled by V-06
-        if not (3 <= len(aid) <= 40) or not SLUG_RE.match(aid):
+        # Unicode-friendly kebab-case: 3-40 chars, no ASCII uppercase, no
+        # whitespace, no FS-reserved chars, no leading/trailing/doubled
+        # hyphens. Unicode letters/digits in any script are accepted.
+        if not is_valid_slug(aid):
             self.add(
                 "N-01",
                 a,
-                f"id {aid!r} must match [a-z][a-z0-9]*(-[a-z0-9]+)* and be 3-40 chars.",
+                f"id {aid!r} must be a valid slug per CONVENTIONS § 11.1: "
+                f"3-40 chars, kebab-case, Unicode letters/digits OK, no "
+                f"ASCII uppercase, no whitespace, no FS-reserved chars "
+                f"(/\\:*?\"<>|), no leading/trailing/doubled hyphens.",
                 severity="warning",
             )
 

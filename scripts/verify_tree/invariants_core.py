@@ -10,12 +10,13 @@ V-21: path components are ASCII-safe.
 from __future__ import annotations
 
 from .model import (
-    ASCII_NAME_RE,
+    ASCII_NAME_RE,  # legacy, retained for back-compat
     KINDS_WITHOUT_FRONTMATTER,
     REQUIRED_BY_KIND,
     RESERVED_DIRS,
     RESERVED_FILENAMES,
     Artifact,
+    is_valid_path_component,
 )
 
 
@@ -102,10 +103,17 @@ class CoreInvariantsMixin:
         for p in parts:
             if p in RESERVED_FILENAMES or p in RESERVED_DIRS:
                 continue
-            if not ASCII_NAME_RE.match(p):
+            # V-21 used to require ASCII-only path components. Relaxed to
+            # allow Unicode (Chinese, Cyrillic, accented Latin, etc.) — only
+            # filesystem-unsafe chars are rejected: whitespace, FS-reserved
+            # (/\:*?"<>|), control chars. Modern filesystems handle Unicode
+            # dirnames fine; the ASCII-only rule was conservative
+            # defensiveness. (See is_valid_path_component in model.py.)
+            if not is_valid_path_component(p):
                 self.add(
                     "V-21",
                     a,
-                    f"path component {p!r} contains non-ASCII or unsafe characters.",
+                    f"path component {p!r} contains unsafe characters "
+                    f"(whitespace, FS-reserved /\\:*?\"<>|, or control chars).",
                 )
                 break
