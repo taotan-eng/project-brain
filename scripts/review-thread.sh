@@ -163,25 +163,45 @@ done < <(fm_list "$THREAD_MD" assigned_to)
 #    are freeform markdown, we just count top-level list items).
 # ---------------------------------------------------------------------------
 
-count_top_list_items() {
+count_real_entries() {
+  # Count real entries in open-questions.md / decisions-candidates.md.
+  #
+  # Both files follow the thread-template (assets/thread-template/) which
+  # has this shape:
+  #
+  #     # Title
+  #     prose paragraphs explaining the file
+  #     - **blocker** — legend bullet
+  #     - **deferrable** — legend bullet
+  #     - **research** — legend bullet
+  #     ---
+  #     ## Template entry (remove on first use)
+  #     ### [blocker] {{QUESTION}}        <-- placeholder, not a real entry
+  #     prose...
+  #
+  # Real entries are H3 headers (`### [tag] Title`). The previous counter
+  # ("count top-level list items") was counting the 3 legend bullets, so
+  # every fresh thread reported "3 open questions / 3 decisions" before
+  # anything had actually been added. Now we count H3 headers, skipping
+  # any whose title still contains a `{{...}}` placeholder marker (so an
+  # un-removed template entry doesn't inflate the count either).
   local f="$1"
   if [[ ! -f "$f" ]]; then
     echo 0
     return
   fi
-  # Skip frontmatter if present; count lines matching "- " or "* " at column 0.
   awk '
-    BEGIN { in_fm=0; past_fm=0 }
-    NR==1 && /^---/ { in_fm=1; next }
-    in_fm && /^---/ { in_fm=0; past_fm=1; next }
+    BEGIN { in_fm=0 }
+    NR==1 && /^---[[:space:]]*$/ { in_fm=1; next }
+    in_fm && /^---[[:space:]]*$/ { in_fm=0; next }
     in_fm { next }
-    /^[-*][[:space:]]/ { c++ }
+    /^### / && !/\{\{/ { c++ }
     END { print c+0 }
   ' "$f"
 }
 
-OQ_COUNT="$(count_top_list_items "$THREAD_DIR/open-questions.md")"
-DC_COUNT="$(count_top_list_items "$THREAD_DIR/decisions-candidates.md")"
+OQ_COUNT="$(count_real_entries "$THREAD_DIR/open-questions.md")"
+DC_COUNT="$(count_real_entries "$THREAD_DIR/decisions-candidates.md")"
 
 # ---------------------------------------------------------------------------
 # 4. Enumerate artifacts + attachments.
