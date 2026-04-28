@@ -246,16 +246,15 @@ Environment override: `PROJECT_BRAIN_TRANSCRIPT=on|off`.
 # transcript
 
 ## 2026-04-23T14:12:00Z — user
-Start a new thread. I've been thinking about whether we should hire a
-second backend engineer.
+Start a new thread. I've been thinking through `<some-decision>`.
 
 ## 2026-04-23T14:12:04Z — assistant — new-thread
-Captured. Thread slug `hire-backend-2`, owner `alice@example.com`.
+Captured. Thread slug `<example-slug>`, owner `alice@example.com`.
 
 Tool calls:
-- Write project-brain/threads/hire-backend-2/thread.md
-- Write project-brain/threads/hire-backend-2/decisions-candidates.md
-- Write project-brain/threads/hire-backend-2/open-questions.md
+- Write project-brain/threads/<example-slug>/thread.md
+- Write project-brain/threads/<example-slug>/decisions-candidates.md
+- Write project-brain/threads/<example-slug>/open-questions.md
 - Exec verify-tree --rebuild-index
 
 Attachments:
@@ -655,28 +654,32 @@ This is the only section a project customizes. Everything above is shared across
 
 ### 10.1 Tree domain taxonomy
 
-List the top-level domains this project uses. **The pack ships no domains by default** — whatever you write here, or whatever domain you supply at first `promote-thread-to-tree` invocation, is what `tree/` will populate. Example shapes (do NOT copy verbatim — pick what fits your project):
+List the top-level domains this project uses. **The pack ships no domains by default** — whatever you write here, or whatever domain you supply at first `promote-thread-to-tree` invocation, is what `tree/` will populate.
+
+> **Agents reading this section: do NOT copy any name shown below into a thread's `tree_domain`, into a staged path under `tree-staging/`, or into a `--allow-domain` flag. These are illustrations of *shape*, not real defaults. The user names their own taxonomy at promote-time. If you find yourself choosing a domain because it appeared in this doc, stop and ask the user via `AskUserQuestion`.**
+
+Example shapes (these are SHAPES, not values to use — pick what fits the actual project):
 
 ```
 # A backend-heavy software project might shape as:
-architecture/
-  data-model/
-  apis/
-infra/
-operations/
+<top-level-A>/
+  <sub-A>/
+  <sub-B>/
+<top-level-B>/
+<top-level-C>/
 
 # A research project might shape as:
-methodology/
-findings/
-open-problems/
+<methodology-folder>/
+<findings-folder>/
+<open-problems-folder>/
 
 # A product-management project might shape as:
-discovery/
-shipping/
-post-mortems/
+<discovery-folder>/
+<shipping-folder>/
+<post-mortems-folder>/
 ```
 
-The pack's only constraint is § 11.1 (kebab-case slug). Names are entirely your call; resist defaulting to whatever a sample showed.
+The pack's only constraint is § 11.1 (kebab-case slug). Names are entirely the user's call. The `promote-local.sh` script enforces this with a runtime guardrail: every promotion's destination domain must be **actively consented to** for that promotion — either via `tree_domain` on the thread's frontmatter (durable, survives sessions) or via `--allow-domain=<name>` on the script invocation (one-shot). Folder existence on disk is **not** consent — folders can get created by prior LLM mistakes, manual mkdir, or half-finished promotions, and silently re-using them would launder those into permanent destinations. The rule is universal — it doesn't single out specific names; "engineering" is no more refused than "kvasir-alpha-7", and a previously-used folder gets the same check as a brand-new one. The primary control is the HARD CONSTRAINT block in `skills/promote-thread-to-tree/SKILL.md` requiring agents to ask the user before staging; the script guardrail is the backstop that catches the agent when it skips the ask.
 
 ### 10.2 Debate personas
 

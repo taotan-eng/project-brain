@@ -62,7 +62,7 @@ Each step is atomic. Failure at step N leaves main in whatever state it was afte
     - No other leaf fields are touched — `source_thread`, `domain`, `impl_spec` (empty), `built_in` (empty) all stay as written by `promote-thread-to-tree`.
 5. **Pre-commit verification of thread state.** Just before committing, re-read the thread's frontmatter from disk (not from the skill's in-memory copy at step 1). Verify that `tree_prs[-1]` (the most recent PR URL) has not already been added to `promoted_to`. If it has been added, another `finalize-promotion` run has already reconciled this PR; refuse with: `finalize-promotion refuses: tree_prs[-1] (<pr-url>) is already finalized (found in promoted_to). Another finalize run may have completed; pull and check thread state.` Abort without committing. This guards against concurrent or stale invocations.
 6. **Update thread frontmatter (same commit).** In `project-brain/threads/[thread_slug]/thread.md`:
-    - For each leaf in step 3, append one entry to `promoted_to` (the full tree path, e.g. `tree/engineering/ir/spec-v1.md`) and one matching entry to `promoted_at` (the PR's `merged_at` timestamp). Parallel-list invariant (§ 9) is satisfied because the same loop appends to both.
+    - For each leaf in step 3, append one entry to `promoted_to` (the full tree path, e.g. `tree/<your-domain>/<sub-area>/<leaf>.md`) and one matching entry to `promoted_at` (the PR's `merged_at` timestamp). Parallel-list invariant (§ 9) is satisfied because the same loop appends to both.
     - If `disposition == continue`:
        - `status: in-review → active`
        - `maturity: locking → refining`

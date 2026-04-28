@@ -42,7 +42,7 @@ All flags are optional.
 | `--include-stale` | boolean | true | Include threads aged ≥ `--stale-days` (the "stale" category). |
 | `--include-no-trigger` | boolean | true | Include threads with no `unpark_trigger` (the "hygiene warning" category). |
 | `--assigned=<handle>` | string | none | Filter results to parked threads assigned to this owner/collaborator. Case-insensitive substring match against `assigned_to` array. |
-| `--domain=<tree-path-prefix>` | string | none | Filter results to parked threads targeting this tree domain (e.g. `--domain=engineering/api` matches threads with `tree_domain: engineering/api/...`). Case-sensitive prefix match. |
+| `--domain=<tree-path-prefix>` | string | none | Filter results to parked threads targeting this tree domain (e.g. `--domain=<your-domain>/<sub-area>` matches threads with `tree_domain: <your-domain>/<sub-area>/...`). Case-sensitive prefix match. Substitute whatever folder names exist under your `tree/`. |
 | `--format=table\|json\|csv\|markdown-report` | enum | markdown-report | Output format. `markdown-report` (default): human-friendly digest with sections per category. `table`: markdown table (all categories flattened). `json`: JSON array. `csv`: RFC 4180 CSV. |
 | `--sort=age-desc\|age-asc\|slug` | enum | age-desc | Sort within each category (or globally if `--format=table`). `age-desc` (default): oldest-parked-first (stalest first). `age-asc`: newest-parked-first. `slug`: alphabetical. |
 
@@ -163,7 +163,7 @@ See **§ Output formats** below for the verbatim markdown / table / json / csv s
 
 | slug | parked (days) | assigned_to | tree_domain |
 |------|---------------|-------------|-------------|
-| shelved-idea | 45 | dave | engineering/ideas |
+| shelved-idea | 45 | dave | <your-domain>/ideas |
 ```
 
 ### table format
@@ -173,10 +173,10 @@ All categories in one table:
 ```markdown
 | slug | category | parked (days) | trigger_text | assigned_to | tree_domain |
 |------|----------|--------------|--------------|-------------|-------------|
-| adp-ir-2026-q2 | actionable | 18 | after Q2 2026 kickoff | alice | engineering/ir |
-| evaluate-crm | actionable | 32 | when budget approved | bob | product/sales |
-| old-research | stale | 124 | | charlie | product/research |
-| shelved-idea | no-trigger | 45 | | dave | engineering/ideas |
+| alpha | actionable | 18 | after Q2 2026 kickoff | alice | <your-domain>/<sub-a> |
+| beta | actionable | 32 | when upstream lands | bob | <your-domain>/<sub-b> |
+| gamma | stale | 124 | | charlie | <other-domain>/<sub-a> |
+| delta | no-trigger | 45 | | dave | <your-domain>/ideas |
 ```
 
 ### json format
@@ -184,26 +184,26 @@ All categories in one table:
 ```json
 [
   {
-    "slug": "adp-ir-2026-q2",
-    "title": "ADP IR 2026 Q2",
+    "slug": "alpha",
+    "title": "Example actionable thread",
     "category": "actionable",
     "parked_duration_days": 18,
     "trigger_text": "after Q2 2026 kickoff",
     "assigned_to": ["alice"],
-    "tree_domain": "engineering/ir",
+    "tree_domain": "<your-domain>/<sub-area>",
     "parked_reason": "Q2 planning cycle pending",
     "parked_by": "alice",
     "parked_at": "2026-04-04T14:30:00Z"
   },
   {
-    "slug": "old-research",
-    "title": "Market research draft",
+    "slug": "gamma",
+    "title": "Example stale thread",
     "category": "stale",
     "parked_duration_days": 124,
     "trigger_text": null,
     "assigned_to": ["charlie"],
-    "tree_domain": "product/research",
-    "parked_reason": "Waiting for user research budget",
+    "tree_domain": "<other-domain>/<sub-area>",
+    "parked_reason": "Waiting for upstream",
     "parked_by": "charlie",
     "parked_at": "2025-11-19T09:00:00Z"
   }
@@ -218,11 +218,11 @@ review-parked-threads
 ```
 Emits a markdown-report digest with all three categories, sorted by age descending (stalest first in each category). Shows actionable triggers, stale-thread candidates, and hygiene warnings.
 
-### Focused: stale threads in engineering
+### Focused: stale threads in a particular domain
 ```bash
-review-parked-threads --domain=engineering --include-stale --include-trigger-set=false --include-no-trigger=false
+review-parked-threads --domain=<your-domain> --include-stale --include-trigger-set=false --include-no-trigger=false
 ```
-Returns only stale parked threads in the `engineering/*` domain. Useful for a "cleanup pass" targeting old eng work.
+Returns only stale parked threads in the `<your-domain>/*` subtree. Useful for a "cleanup pass" targeting old work in that area. Substitute whatever folder name actually exists under your `tree/` — the pack ships no defaults.
 
 ### Machine feed: actionable parked threads as JSON
 ```bash

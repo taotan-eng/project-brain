@@ -59,6 +59,22 @@ The skill **refuses** if any of these are not met.
 
 ## Process
 
+> ### ⛔️ HARD CONSTRAINT — TREE DOMAIN MUST COME FROM THE USER, NEVER FROM YOU
+>
+> The pack ships with **no default tree taxonomy**. Domains exist only when the user has explicitly named one — by setting `tree_domain` on the thread's frontmatter, by passing an explicit `--domain=<value>` to a script, or by answering an `AskUserQuestion` at promote-time.
+>
+> Before staging any leaf, resolve the destination domain in this exact order:
+>
+> 1. If the source thread's frontmatter has a non-empty `tree_domain`, use that.
+> 2. Else, if the user's invocation supplied an explicit domain (CLI flag, prose like "promote into `<dir>/`"), use that.
+> 3. Else, **ask the user via `AskUserQuestion`** — present the existing top-level entries under `project-brain/tree/` (just `ls`) plus an "other (type one)" option. Phrasing: "What folder under `tree/` should this leaf land in? Pick an existing one, or name a new one — the taxonomy is yours."
+>
+> **Do NOT infer a domain from the thread's content topic.** A thread about hardware is NOT automatically an `engineering/` thread; a hiring thread is NOT automatically `hr/` or `people/`. Every example you see in this SKILL.md or any other doc — including `<your-domain>`, `<sub-area>`, etc. — is placeholder syntax, never a literal.
+>
+> If you find yourself about to write `tree-staging/<any-concrete-name>/...` without the user having named that folder, STOP and ask. This is the most consistently-reported bug in the pack: the LLM picks a domain from thread content (most commonly "engineering" because thread-content topics often sound engineering-flavored) without confirming with the user. The fix is universal — ask before staging, regardless of which specific name you'd otherwise pick.
+>
+> Backstop: `promote-local.sh` refuses to land into ANY `tree/<name>/` folder unless the user explicitly consented for THIS promotion (via thread `tree_domain` matching the staged path's top-level OR `--allow-domain=<name>` on the script invocation). Folder existence on disk is NOT consent — even if `tree/architecture/` is already there from a prior promotion, the script still requires active consent for each new leaf. If you ignore the HARD CONSTRAINT, the script will refuse with a clear remediation message.
+
 ### Mode dispatch
 
 Promotion supports four modes (CONVENTIONS § 4.2):

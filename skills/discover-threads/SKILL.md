@@ -23,7 +23,7 @@ The skill is read-only. It works even when `thread-index.md` and `current-state.
 - "What threads in `<domain>/` require two-human review?"
 - "What in-review threads have open PRs?" / "Surface PR state for active threads"
 - "Export thread inventory to JSON" / "feed a dashboard with live thread list"
-- "What threads target a specific tree domain?" / "find all threads aimed at product/billing"
+- "What threads target a specific tree domain?" / "find all threads aimed at `<some-domain>/<sub-area>`"
 - After `update-thread`, `park-thread`, or other mutations, to verify the result without waiting for index rebuild
 
 ## Inputs
@@ -35,7 +35,7 @@ All flags are optional and combinable AND-style. If no filters are supplied, all
 | `--status=<list>` | multi-select (comma-separated) | `--status=active,parked` | Thread status: `active`, `parked`, `in-review`, `archived`. Default: `active,parked,in-review`. |
 | `--owner=<handle>` | string match | `--owner=alice` | Match `created_by` OR `last_modified_by` containing the handle. |
 | `--assigned=<handle>` | string match | `--assigned=tom` | Match any entry in `assigned_to` array containing the handle. Case-insensitive. |
-| `--domain=<prefix>` | prefix match | `--domain=engineering/api` | Match `tree_domain` by prefix. Example: `--domain=product` matches `product/billing`, `product/ui`, etc. |
+| `--domain=<prefix>` | prefix match | `--domain=<your-domain>/<sub-area>` | Match `tree_domain` by prefix. Example: `--domain=<top>` matches `<top>/<a>`, `<top>/<b>`, etc. (Substitute whatever folder names exist under your `tree/`; the pack ships with no defaults.) |
 | `--maturity=<list>` | multi-select | `--maturity=locking,refining` | Thread maturity: `exploring`, `refining`, `locking`. Only applies to `active` or `parked` threads (others have no maturity). |
 | `--modified-before=<spec>` | relative or ISO-8601 | `--modified-before=30d` or `--modified-before=2026-04-01` | Last modified at or before the given date. Relative format: `<N>d` = N days ago, `<N>h` = N hours ago. ISO: `YYYY-MM-DD` or full ISO-8601 with time. |
 | `--modified-after=<spec>` | relative or ISO-8601 | `--modified-after=7d` | Last modified at or after the given date. |
@@ -53,7 +53,7 @@ All flags are optional and combinable AND-style. If no filters are supplied, all
 - All filters are AND-ed: a thread must match every supplied filter to appear in results.
 - Empty filter set matches all threads in the default status group (`active,parked,in-review`).
 - Date filters parse relative (`30d`, `2h`) or ISO-8601 absolute (`2026-04-01T14:30:00Z`). Relative times are computed as "now minus N" in UTC.
-- Domain prefix match is case-sensitive. Example: `--domain=eng` does NOT match `engineering/api`.
+- Domain prefix match is case-sensitive. Example: `--domain=foo` does NOT match `Foo/api`.
 
 ## Preconditions
 
@@ -157,29 +157,29 @@ Table format (default):
 ```
 | slug | status | maturity | created_by | assigned_to | last_modified_at | tree_domain |
 |------|--------|----------|------------|-------------|------------------|-------------|
-| hire-backend-lead | active | locking | alice | alice, bob | 2026-04-22T10:00:00Z | engineering/hiring |
-| evaluate-crm-vendors | parked | refining | bob | bob | 2026-03-15T14:30:00Z | product/sales |
+| alpha | active | locking | alice | alice, bob | 2026-04-22T10:00:00Z | <your-domain>/<sub-area> |
+| beta | parked | refining | bob | bob | 2026-03-15T14:30:00Z | <other-domain>/<sub-area> |
 ```
 
 JSON format:
 ```json
 [
   {
-    "id": "hire-backend-lead",
-    "title": "Hire backend team lead",
+    "id": "alpha",
+    "title": "Example thread title",
     "status": "active",
     "maturity": "locking",
     "created_by": "alice",
     "assigned_to": ["alice", "bob"],
     "last_modified_at": "2026-04-22T10:00:00Z",
-    "tree_domain": "engineering/hiring",
+    "tree_domain": "<your-domain>/<sub-area>",
     "tree_prs": []
   },
   {
-    "id": "evaluate-crm-vendors",
+    "id": "beta",
     "status": "parked",
     "maturity": "refining",
-    "parked_reason": "Awaiting budget decision",
+    "parked_reason": "Awaiting upstream decision",
     "parked_at": "2026-03-15T14:30:00Z",
     ...
   }
@@ -188,8 +188,8 @@ JSON format:
 
 Paths format (one per line):
 ```
-/Users/.../project-brain/threads/hire-backend-lead/thread.md
-/Users/.../project-brain/threads/evaluate-crm-vendors/thread.md
+/Users/.../project-brain/threads/alpha/thread.md
+/Users/.../project-brain/threads/beta/thread.md
 ```
 
 ## Frontmatter flips

@@ -1146,7 +1146,11 @@ class PromoteLocalTests(BaseTest):
         self._stage_leaf(brain, "auth", "architecture", "transport")
         self._stage_leaf(brain, "auth", "architecture", "tokens")
 
-        r = self._run_promote_local(brain, "--slug", "auth", "--no-commit")
+        # New-domain guardrail requires explicit consent; tests opt in
+        # via --allow-domain. Real users either set tree_domain on the
+        # thread or pass the flag (per skill HARD CONSTRAINT).
+        r = self._run_promote_local(brain, "--slug", "auth", "--no-commit",
+                                    "--allow-domain=architecture")
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertIn("Done.", r.stdout)
 
@@ -1161,23 +1165,27 @@ class PromoteLocalTests(BaseTest):
         """--leaves=A,C leaves B staged; validator clean."""
         brain = make_brain(self.tmp_path)
         make_thread(brain, "api", status="active", maturity="refining")
+        # Test domain is "fixt" (deliberately not on the LLM-default-domain
+        # blacklist enforced by promote-local.sh's guardrail). Real users
+        # name their own taxonomy at promote-time; tests use abstract slugs.
         for leaf in ("alpha", "beta", "gamma"):
-            self._stage_leaf(brain, "api", "engineering", leaf)
+            self._stage_leaf(brain, "api", "fixt", leaf)
 
         r = self._run_promote_local(
             brain, "--slug", "api", "--leaves", "alpha,gamma", "--no-commit",
+            "--allow-domain=fixt",
         )
         self.assertEqual(r.returncode, 0, r.stderr)
 
         tree_leaves = sorted(
-            p.name for p in (brain / "tree" / "engineering").glob("*.md")
+            p.name for p in (brain / "tree" / "fixt").glob("*.md")
             if p.name != "NODE.md"
         )
         self.assertEqual(tree_leaves, ["alpha.md", "gamma.md"])
 
         staging_remaining = sorted(
             p.name for p in (brain / "threads" / "api" / "tree-staging"
-                             / "engineering").glob("*.md")
+                             / "fixt").glob("*.md")
         )
         self.assertEqual(staging_remaining, ["beta.md"])
 
@@ -1188,10 +1196,12 @@ class PromoteLocalTests(BaseTest):
         """--archive-thread moves thread to archive/ with status=archived."""
         brain = make_brain(self.tmp_path)
         make_thread(brain, "ops", status="active", maturity="locking")
-        self._stage_leaf(brain, "ops", "operations", "pager-routing")
+        # "fixt2" — abstract test domain, not on the LLM-default blacklist.
+        self._stage_leaf(brain, "ops", "fixt2", "pager-routing")
 
         r = self._run_promote_local(
             brain, "--slug", "ops", "--no-commit", "--archive-thread",
+            "--allow-domain=fixt2",
         )
         self.assertEqual(r.returncode, 0, r.stderr)
 
@@ -1199,7 +1209,7 @@ class PromoteLocalTests(BaseTest):
         archived = brain / "archive" / "ops" / "thread.md"
         self.assertTrue(archived.exists())
         self.assertIn("status: archived", archived.read_text())
-        self.assertTrue((brain / "tree" / "operations" / "pager-routing.md").exists())
+        self.assertTrue((brain / "tree" / "fixt2" / "pager-routing.md").exists())
 
         code, data, *_ = run_validator(brain)
         self.assertEqual(code, 0, data.get("errors"))
@@ -1218,10 +1228,11 @@ class PromoteLocalTests(BaseTest):
         """--leaves='nonexistent' fails with a list of what's actually staged."""
         brain = make_brain(self.tmp_path)
         make_thread(brain, "x", status="active", maturity="refining")
-        self._stage_leaf(brain, "x", "engineering", "real-leaf")
+        self._stage_leaf(brain, "x", "fixt", "real-leaf")
 
         r = self._run_promote_local(
             brain, "--slug", "x", "--leaves", "nonexistent", "--no-commit",
+            "--allow-domain=fixt",
         )
         self.assertEqual(r.returncode, 1)
         self.assertIn("matched none", r.stderr + r.stdout)

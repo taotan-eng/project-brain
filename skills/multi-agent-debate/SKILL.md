@@ -35,7 +35,7 @@ The skill is two modes. **Open** is the round-opener described above. **Close** 
 
 | Name                  | Source                          | Required | Description                                                                                     |
 |-----------------------|---------------------------------|----------|-------------------------------------------------------------------------------------------------|
-| `artifact_path`       | user prompt or cwd inference    | yes      | Path to the artifact under review: a leaf (e.g. `tree/engineering/ir/spec-full.md`) or a thread (e.g. `threads/<slug>/thread.md` or the thread directory). Defaults to the artifact at cwd if one is open. |
+| `artifact_path`       | user prompt or cwd inference    | yes      | Path to the artifact under review: a leaf (e.g. `tree/<your-domain>/<sub-area>/<leaf>.md`) or a thread (e.g. `threads/<slug>/thread.md` or the thread directory). Defaults to the artifact at cwd if one is open. |
 | `scope`               | flag or inferred from path      | yes      | `leaf` or `thread`. Inferred from `artifact_path` (under `tree/` → leaf; under `threads/` → thread). Explicit `--scope` overrides. |
 | `mode`                | flag or inferred from status    | yes      | `open` or `close`. Leaf inference: `decided`/`specified` → `open`, `hardening` → `close`. Thread inference: `active` with no open round → `open`, `active` with an unclosed round → `close`. Explicit flag overrides. |
 | `personas`            | flag or prompt                  | cond.    | Comma-separated list of persona names drawn from § 10.2, e.g. `--personas=fresh-eyes-reader,red-team,cross-ref-auditor`. If omitted, the skill prompts with the project's full § 10.2 roster via `AskUserQuestion` (multi-select). |
@@ -274,7 +274,7 @@ See CONVENTIONS § 10.2 for the definition of reviewer personas and how to custo
 Reads `verbosity` from `<brain>/config.yaml` (env override: `PROJECT_BRAIN_VERBOSITY`). Defaults to `terse`.
 
 - **terse** (default): one line per artifact (leaf or thread) + round + verdicts, then `Done.`
-  - Example: `Opened debate round-03 on project-brain/tree/engineering/api-spec.md (5 reviewers, 4 CONCEDE, 1 DEFER). Done.`
+  - Example: `Opened debate round-03 on project-brain/tree/<your-domain>/<leaf>.md (5 reviewers, 4 CONCEDE, 1 DEFER). Done.`
 - **normal**: structured summary of personas, verdicts, carried patches.
 - **verbose**: full narration (pre-rc4 default). Use for debugging.
 
