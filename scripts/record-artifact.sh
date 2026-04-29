@@ -118,10 +118,17 @@ fi
 
 # Slug sanity — the frontmatter + path-match check (V-22) lives in the
 # validator; this is just a cheap pre-check so we don't write nonsense.
-if [[ ! "$SLUG" =~ ^[a-z][a-z0-9]*(-[a-z0-9]+)*$ ]]; then
-  echo "error: --slug '$SLUG' is not a valid kebab-case slug." >&2
+# Unicode-friendly per CONVENTIONS § 11.1: shell out to _validate_slug.py
+# for the canonical check + NFC normalization. (Single source of truth
+# across all scripts; avoids bash 3.2 Unicode regex unreliability on macOS.)
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+_record_tmp="$(mktemp)"
+if ! python3 "${SCRIPT_DIR}/_validate_slug.py" "$SLUG" >"$_record_tmp"; then
+  rm -f "$_record_tmp"
   exit 2
 fi
+SLUG="$(cat "$_record_tmp")"
+rm -f "$_record_tmp"
 
 # ---------------------------------------------------------------------------
 # 3. Resolve body source → a single temp file holding what we'll write.
@@ -140,11 +147,31 @@ fi
 CREATED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 DATE_FOR_ID="$(date -u +%Y-%m-%d)"
 
-# Derive a slug fragment for filenames from the title (lowercase, non-alnum → '-').
+# Derive a slug fragment for filenames from the title.
+# Unicode-aware: lowercase ASCII letters; replace whitespace and FS-reserved
+# chars with '-'; preserve Unicode letters/digits in any script. NFC-normalize.
+# Implemented in Python because bash's tr/sed don't reliably handle Unicode
+# across macOS (bash 3.2) and Linux locale variations.
 title_slug() {
-  printf '%s' "$1" \
-    | tr '[:upper:]' '[:lower:]' \
-    | sed -e 's/[^a-z0-9]/-/g' -e 's/--*/-/g' -e 's/^-//' -e 's/-$//'
+  python3 - "$1" <<'PY'
+import re
+import sys
+import unicodedata
+
+raw = sys.argv[1]
+# NFC normalize first
+s = unicodedata.normalize("NFC", raw)
+# Lowercase ASCII letters only (Unicode 'lower' is a no-op for scripts
+# without case distinction — fine).
+s = s.lower()
+# Replace whitespace and FS-reserved chars with hyphen.
+s = re.sub(r'[\s/\\:*?"<>|\x00-\x1f]+', '-', s)
+# Collapse repeated hyphens.
+s = re.sub(r'-+', '-', s)
+# Strip leading/trailing hyphens.
+s = s.strip('-')
+print(s, end='')
+PY
 }
 TITLE_SLUG="$(title_slug "$TITLE")"
 [[ -z "$TITLE_SLUG" ]] && TITLE_SLUG="untitled"
