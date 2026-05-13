@@ -1320,10 +1320,10 @@ class RestoreThreadTests(BaseTest):
 
 
 class DiscoverThreadsTests(BaseTest):
-    """discover-threads.sh — read-only thread query. Validates filter, sort,
+    """list-threads.sh — read-only thread query. Validates filter, sort,
     limit, and format combinations against a synthetic brain."""
 
-    DISCOVER = HERE / "discover-threads.sh"
+    DISCOVER = HERE / "list-threads.sh"
 
     def _run(self, brain, *args):
         return subprocess.run(

@@ -91,7 +91,7 @@ After success, echo the script's stdout in your response message verbatim — do
 
 ## Failure modes
 
-- `thread not found` → exit 2. Invoke `discover-threads` or ask the user for the right slug.
+- `thread not found` → exit 2. Invoke `list-threads` or ask the user for the right slug.
 - `one of --file, --content, or --stdin is required` / `mutually exclusive` → exit 2. Re-invoke with exactly one source.
 - `--file path not found` → exit 2. Fix the path.
 - `post-write rebuild reported problems` → exit 1. The artifact is saved but the brain has validation errors — run `verify-tree` to diagnose.

@@ -97,7 +97,7 @@ Pre-promote skills no longer invoke git. They are pure file operations. Affected
 
 - new-thread, update-thread, park-thread, discard-thread
 - multi-agent-debate, assign-thread
-- discover-threads, review-parked-threads (read-only)
+- list-threads, review-parked-threads (read-only)
 - materialize-context
 - verify-tree
 

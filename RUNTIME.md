@@ -163,12 +163,12 @@ A future release may add PowerShell-native equivalents for shell snippets (e.g.,
 | `multi-agent-debate` | yes | yes | no | no | yes (fallback: scaffold-and-refuse) | yes (fallback: flags) | no |
 | `materialize-context` | yes | no (git optional) | no | no | no | no | yes (fallback: unresolved) |
 | `verify-tree` | yes | no | no | **yes** | no | no | no |
-| `discover-threads` | yes | no | no | no | no | no | no |
+| `list-threads` | yes | no | no | no | no | no | no |
 | `assign-thread` | yes | yes | no | no | no | no | no |
 | `review-parked-threads` | yes | no | no | no | no | no | no |
 
 **Key observations:**
-- Nine skills (new-thread, update-thread, park-thread, discard-thread, discover-threads, assign-thread, review-parked-threads, materialize-context, verify-tree) have no `gh` or subagent requirement.
+- Nine skills (new-thread, update-thread, park-thread, discard-thread, list-threads, assign-thread, review-parked-threads, materialize-context, verify-tree) have no `gh` or subagent requirement.
 - Three skills (promote-thread-to-tree, finalize-promotion, discard-promotion) require `gh` and refuse if absent.
 - One skill (multi-agent-debate) requires subagents *only* for open mode; close mode works standalone.
 - Only `verify-tree` requires Python; invariant registry is language-neutral so a replacement is straightforward.

@@ -73,7 +73,7 @@ None needed. `review-thread` is read-only.
 
 ## Failure modes
 
-- `thread '<slug>' not found` → exit 2. Invoke `discover-threads` or ask for correct slug.
+- `thread '<slug>' not found` → exit 2. Invoke `list-threads` or ask for correct slug.
 - `<thread>/thread.md does not exist` → exit 2. Thread dir is malformed; likely a partial `new-thread` failure. Re-run `verify-tree` to diagnose.
 
 ## Postconditions
@@ -84,7 +84,7 @@ None needed. `review-thread` is read-only.
 ## Related skills
 
 - **`record-artifact`**: the write-side counterpart.
-- **`discover-threads`**: lists all threads, doesn't drill into one.
+- **`list-threads`**: lists all threads, doesn't drill into one.
 - **`new-thread`**: creates threads that `review-thread` reads.
 - **`verify-tree`**: if `review-thread` shows stale counts, `verify-tree --rebuild-index` resyncs `thread-index.md` and `current-state.md`.
 
