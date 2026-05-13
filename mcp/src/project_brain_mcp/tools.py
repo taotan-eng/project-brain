@@ -333,6 +333,160 @@ async def discard_promotion_impl(args: DiscardPromotionArgs) -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
+# Day-5 complex tools (3 — init_project_brain, promote_thread_to_tree,
+# materialize_context). The `multi_agent_debate` workflow is deliberately
+# NOT a tool — it's a prompt only, since subagent spawning belongs to the
+# calling agent's host (Cowork Task tool, Claude Code subagent, etc.)
+# rather than to the MCP server.
+# ---------------------------------------------------------------------------
+
+from pathlib import Path as _Path
+
+
+class InitProjectBrainArgs(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    target: str = Field(
+        min_length=1,
+        description=(
+            "Absolute path to the directory where the brain should live "
+            "(i.e., where CONVENTIONS.md will land). The Layer-1 script "
+            "always creates a `project-brain/` subdirectory under the "
+            "target's parent, so passing `target=/path/foo/project-brain` "
+            "yields a brain at that exact location."
+        ),
+    )
+    primary_project: str = Field(
+        min_length=1,
+        description="Alias for the new brain's primary project (kebab-case)",
+    )
+    owner: str | None = Field(
+        default=None,
+        description="Owner email; defaults to the TODO@example.com placeholder",
+    )
+    force: bool = Field(
+        default=False,
+        description="If True, allow overwriting an existing brain at target (backed up to .bak.<timestamp>/)",
+    )
+
+
+class PromoteThreadToTreeArgs(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    brain: str = Field(min_length=1)
+    slug: str = Field(min_length=1)
+    allow_domain: str = Field(
+        min_length=1,
+        description=(
+            "Destination domain under tree/ (e.g. 'auth', 'storage'). "
+            "MUST come from explicit user authorization — see the prompt body "
+            "of the promote-thread-to-tree skill for the consent protocol. "
+            "The agent MUST NOT infer this from thread frontmatter, folder "
+            "list, prior promoted_to entries, content topic, or conversation "
+            "context. Empty string is rejected (this is the technical "
+            "enforcement of the day-1 five-round hardening consent gate)."
+        ),
+    )
+    leaves: list[str] | None = Field(
+        default=None,
+        description="Subset of leaves to promote; default = all decided leaves",
+    )
+    mode: str = Field(
+        default="local",
+        description="local | git:pr | git:branch | git:manual; the MCP tool wraps local mode",
+    )
+    archive_thread: bool = Field(default=False)
+    no_commit: bool = Field(default=False)
+    by: str | None = Field(default=None)
+
+
+class MaterializeContextArgs(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    brain: str = Field(min_length=1)
+    artifact: str = Field(
+        min_length=1,
+        description="Path to the artifact relative to brain (thread, leaf, or NODE.md)",
+    )
+    consumer: str = Field(
+        default="reviewer",
+        description="reviewer | author | reader — affects role-based filtering",
+    )
+    roles: list[str] = Field(
+        default_factory=lambda: ["spec", "prior-decision"],
+        description="Soft-link role tags to include in materialized context",
+    )
+    persist: bool = Field(
+        default=False,
+        description="If True, persist into the artifact directory for audit; default ephemeral",
+    )
+    detect_stale: bool = Field(
+        default=False,
+        description="If True, walk refs without materializing; report broken/drifted links",
+    )
+
+
+async def init_project_brain_impl(args: InitProjectBrainArgs) -> dict[str, Any]:
+    target = _Path(args.target)
+    marker = target / "CONVENTIONS.md"
+    if marker.exists() and not args.force:
+        return err(
+            "script_error",
+            f"target {args.target} already has an existing brain (CONVENTIONS.md present)",
+            hint="set force=True to overwrite (existing dir is backed up to .bak.<timestamp>/), or pick a different target directory",
+        )
+
+    home = str(target.parent) if target.name == "project-brain" else str(target)
+    argv = [f"--home={home}", f"--alias={args.primary_project}", f"--title={args.primary_project}"]
+    if args.owner:
+        argv.append(f"--owner={args.owner}")
+    if args.force:
+        argv.append("--force")
+    return from_subprocess_result(run_script("init-brain.sh", argv))
+
+
+async def promote_thread_to_tree_impl(args: PromoteThreadToTreeArgs) -> dict[str, Any]:
+    if args.mode != "local":
+        return err(
+            "script_error",
+            f"mode={args.mode!r} is not supported via the MCP tool surface; only mode=local is wrapped",
+            hint="for git:pr / git:branch / git:manual modes, use the promote-thread-to-tree prompt and orchestrate git directly in the calling agent",
+        )
+
+    argv = [
+        f"--brain={args.brain}",
+        f"--slug={args.slug}",
+        f"--allow-domain={args.allow_domain}",
+    ]
+    if args.leaves:
+        argv.append(f"--leaves={','.join(args.leaves)}")
+    if args.archive_thread:
+        argv.append("--archive-thread")
+    if args.no_commit:
+        argv.append("--no-commit")
+    if args.by:
+        argv.append(f"--by={args.by}")
+    return from_subprocess_result(run_script("promote-local.sh", argv))
+
+
+async def materialize_context_impl(args: MaterializeContextArgs) -> dict[str, Any]:
+    # scripts/materialize-context.sh is not yet implemented; the wiring is
+    # in place so a future Layer-1 commit can land the script without
+    # touching Layer-2. Until then, calls return script_error "not found".
+    argv = [
+        f"--brain={args.brain}",
+        f"--artifact={args.artifact}",
+        f"--consumer={args.consumer}",
+        f"--roles={','.join(args.roles)}",
+    ]
+    if args.persist:
+        argv.append("--persist")
+    if args.detect_stale:
+        argv.append("--detect-stale")
+    return from_subprocess_result(run_script("materialize-context.sh", argv))
+
+
+# ---------------------------------------------------------------------------
 # Validation-error wrapper
 # ---------------------------------------------------------------------------
 

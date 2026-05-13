@@ -19,9 +19,12 @@ from .tools import (
     DiscardPromotionArgs,
     DiscardThreadArgs,
     FinalizePromotionArgs,
+    InitProjectBrainArgs,
     ListThreadsArgs,
+    MaterializeContextArgs,
     NewThreadArgs,
     ParkThreadArgs,
+    PromoteThreadToTreeArgs,
     RecordArtifactArgs,
     RestoreThreadArgs,
     ReviewParkedThreadsArgs,
@@ -33,9 +36,12 @@ from .tools import (
     discard_promotion_impl,
     discard_thread_impl,
     finalize_promotion_impl,
+    init_project_brain_impl,
     list_threads_impl,
+    materialize_context_impl,
     new_thread_impl,
     park_thread_impl,
+    promote_thread_to_tree_impl,
     record_artifact_impl,
     restore_thread_impl,
     review_parked_threads_impl,
@@ -223,6 +229,88 @@ async def discard_promotion(
     brain: str, slug: str, pr_status: str | None = None,
 ) -> dict[str, Any]:
     return await _discard_promotion(brain=brain, slug=slug, pr_status=pr_status)
+
+
+# ---------------------------------------------------------------------------
+# Day-5 complex tools (3) — multi_agent_debate is deliberately not exposed
+# as a tool (subagent spawning belongs to the calling host, not the MCP
+# server); its prompt is already auto-registered via PROMPT_SKILLS.
+# ---------------------------------------------------------------------------
+
+_init_project_brain = wrap_validation(InitProjectBrainArgs, init_project_brain_impl)
+_promote_thread_to_tree = wrap_validation(PromoteThreadToTreeArgs, promote_thread_to_tree_impl)
+_materialize_context = wrap_validation(MaterializeContextArgs, materialize_context_impl)
+
+
+@app.tool(
+    name="init_project_brain",
+    description=(
+        "Create a new project-brain at a target directory. Refuses if a brain "
+        "already exists at the target unless force=True (which backs up the "
+        "existing brain to project-brain.bak.<timestamp>/)."
+    ),
+)
+async def init_project_brain(
+    target: str,
+    primary_project: str,
+    owner: str | None = None,
+    force: bool = False,
+) -> dict[str, Any]:
+    return await _init_project_brain(
+        target=target, primary_project=primary_project, owner=owner, force=force,
+    )
+
+
+@app.tool(
+    name="promote_thread_to_tree",
+    description=(
+        "Promote thread leaves into tree/<allow_domain>/. allow_domain is a "
+        "REQUIRED parameter and MUST come from explicit user authorization; "
+        "the agent must NOT infer it from thread frontmatter, folder list, or "
+        "conversation context. See the promote-thread-to-tree prompt for the "
+        "full consent protocol. v1.0 wraps mode=local; other modes return "
+        "script_error with guidance to orchestrate git directly."
+    ),
+)
+async def promote_thread_to_tree(
+    brain: str,
+    slug: str,
+    allow_domain: str,
+    leaves: list[str] | None = None,
+    mode: str = "local",
+    archive_thread: bool = False,
+    no_commit: bool = False,
+    by: str | None = None,
+) -> dict[str, Any]:
+    return await _promote_thread_to_tree(
+        brain=brain, slug=slug, allow_domain=allow_domain,
+        leaves=leaves, mode=mode, archive_thread=archive_thread,
+        no_commit=no_commit, by=by,
+    )
+
+
+@app.tool(
+    name="materialize_context",
+    description=(
+        "Walk the soft_links graph for a thread, leaf, or NODE.md per "
+        "CONVENTIONS § 5.1, returning resolved content as structured response "
+        "data. Pure read; no state mutation."
+    ),
+)
+async def materialize_context(
+    brain: str,
+    artifact: str,
+    consumer: str = "reviewer",
+    roles: list[str] | None = None,
+    persist: bool = False,
+    detect_stale: bool = False,
+) -> dict[str, Any]:
+    if roles is None:
+        roles = ["spec", "prior-decision"]
+    return await _materialize_context(
+        brain=brain, artifact=artifact, consumer=consumer,
+        roles=roles, persist=persist, detect_stale=detect_stale,
+    )
 
 
 # ---------------------------------------------------------------------------
