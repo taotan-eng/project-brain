@@ -32,7 +32,7 @@ The skill is read-only and side-effect-free. It is safe to run at any cadence โ€
 | `severity`     | flag                           | no       | `--warnings-as-errors` treats ยง 11 naming-style warnings as errors. Default warnings are reported but do not affect exit code. Only applies to validation mode. |
 | `dry_run`      | flag                           | no       | `--dry-run` applies only to `--rebuild-index` mode: runs the full regeneration logic but skips file writes; instead prints diffs to stderr. Useful for CI and debugging drift. |
 
-Flag handling: verify-tree is the one skill in the pack where flags dominate over `AskUserQuestion`. Because it is frequently invoked programmatically by other skills, the interface is designed to be scriptable. When invoked interactively without flags, it defaults to full-brain validation + human output.
+Flag handling: verify-tree is the one skill in the pack where flags dominate over interactive prompts. Because it is frequently invoked programmatically by other skills, the interface is designed to be scriptable. When invoked interactively without flags, it defaults to full-brain validation + human output.
 
 ## Preconditions
 

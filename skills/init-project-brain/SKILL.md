@@ -29,7 +29,7 @@ The detection chain, highest priority first:
 
 **Default flow: zero prompts** if detection returns any source 1–5. The skill prints a single confirmation line (`Project home: /path (detected: cowork-workspace)`) and proceeds. Users who want a different location pass `--home=<path>` to override. Users can see which source was chosen in the output to confirm it matches their expectation.
 
-**Fallback flow: one prompt** if detection lands on source 6 (raw cwd with no git). The ambiguity is real — the agent has no idea where the project should live — so one AskUserQuestion surfaces with cwd as the default and the user can accept or type an alternative.
+**Fallback flow: one prompt** if detection lands on source 6 (raw cwd with no git). The ambiguity is real — the agent has no idea where the project should live — so one user prompt surfaces with cwd as the default and the user can accept or type an alternative.
 
 **Existing-brain detection:** if a `project-brain/` directory already exists at the chosen location and contains a `CONVENTIONS.md`, the skill stops and asks: **"A brain already exists at `<path>`. Overwrite (rename existing to `project-brain.bak.<timestamp>/` and scaffold fresh), or cancel?"** Default is cancel. The skill never silently clobbers existing work; the backup-rename is recoverable so mistakes cost nothing.
 
@@ -50,7 +50,7 @@ The skill is deliberately opinionated at a few points: it pre-scaffolds top-leve
 |---------------------|---------------------------------|----------|-------------------------------------------------------------------------------------------|
 | `project_alias`     | user prompt                     | yes      | Kebab-case key for `~/.config/project-brain/projects.yaml` (§ 11.1). Must not already exist in the registry. |
 | `project_title`     | user prompt                     | yes      | Human-readable name used in `thread-index.md` and `current-state.md` headers.             |
-| `project_home`      | **detected** via `detect_host_project_root()` (see preamble); falls through to one AskUserQuestion only when detection returns the raw-cwd source | yes | Absolute path to the directory the brain will live **inside** (i.e., parent of `project-brain/`). Detection chain consults env vars (`PROJECT_BRAIN_HOME`, `COWORK_WORKSPACE_FOLDER`, `CODEX_PROJECT_ROOT`, `CLAUDE_PROJECT_ROOT`), then walks for `.git/`, then cwd. Override with `--home=<path>`. |
+| `project_home`      | **detected** via `detect_host_project_root()` (see preamble); falls through to one user prompt only when detection returns the raw-cwd source | yes | Absolute path to the directory the brain will live **inside** (i.e., parent of `project-brain/`). Detection chain consults env vars (`PROJECT_BRAIN_HOME`, `COWORK_WORKSPACE_FOLDER`, `CODEX_PROJECT_ROOT`, `CLAUDE_PROJECT_ROOT`), then walks for `.git/`, then cwd. Override with `--home=<path>`. |
 | `brain_path`        | derived from `project_home`     | yes      | Computed as `<project_home>/project-brain`. |
 | `remotes`           | **`--init-git` only** — `git remote -v` + user prompt | conditional | List of remotes the brain repo may push to. Only collected when `--init-git` is passed. In the default flow the registry entry (if written at all) omits the `remotes:` block and promote-time fills it in. |
 | `default_remote`    | **`--init-git` only** — user prompt | conditional | Required when `remotes` has >1 entry; defaults to the sole entry otherwise. Default flow skips. |
@@ -79,7 +79,7 @@ The skill **refuses** if any of these are not met. Preconditions 1, 3, 6 apply *
 2. The target `brain_path` does not already contain a brain (`<brain_path>/CONVENTIONS.md` doesn't exist). **Handling:**
     - If `brain_path` does not exist at all: proceed silently.
     - If `brain_path` exists but is empty or has no `CONVENTIONS.md`: proceed silently (treating as a partial / abandoned scaffold).
-    - If `brain_path/CONVENTIONS.md` exists: prompt via AskUserQuestion: `"A project-brain already exists at <brain_path>. Overwrite (rename existing to project-brain.bak.<YYYYMMDD-HHMMSS>/ and scaffold fresh) or cancel?"` — default is **cancel**. If the user picks overwrite, rename the existing directory to `<brain_path>.bak.<timestamp>` (with seconds precision to avoid collisions on rapid re-invocation) and continue. If the user picks cancel, exit cleanly with a one-line report (`Brain already exists at <path>; no changes made.`). Skip this prompt if `--force` is set (auto-overwrite) or abort immediately if neither flag is set and the prompt can't be shown.
+    - If `brain_path/CONVENTIONS.md` exists: ask the user to choose: `"A project-brain already exists at <brain_path>. Overwrite (rename existing to project-brain.bak.<YYYYMMDD-HHMMSS>/ and scaffold fresh) or cancel?"` — default is **cancel**. If the user picks overwrite, rename the existing directory to `<brain_path>.bak.<timestamp>` (with seconds precision to avoid collisions on rapid re-invocation) and continue. If the user picks cancel, exit cleanly with a one-line report (`Brain already exists at <path>; no changes made.`). Skip this prompt if `--force` is set (auto-overwrite) or abort immediately if neither flag is set and the prompt can't be shown.
 3. (Only if `--init-git`) Working tree is clean on `main` (or the project's default branch). Init's `--init-git` commits directly to that branch; uncommitted changes would be swept into the bootstrap commit.
 4. The `owner` field is seeded from the `--owner <email>` flag if given. Otherwise it's written as the literal placeholder `TODO@example.com` and a visible TODO marker is prepended to CONVENTIONS.md § 10 (see Process step 4). **The default flow does NOT invoke any shell command to guess the user's identity** — no `git config`, no `echo $EMAIL`, no `whoami`. Every shell invocation in agentic IDEs triggers a permission prompt, and the user's mental model for init is "setup → Done, no questions." Only when `--init-git` is set does the skill optionally consult `$EMAIL` then `git config user.email` as fallbacks — that path is already invoking the shell and git for `init` + `commit`, so one more read is no additional friction. This precondition is always best-effort — it never refuses.
 5. `~/.config/project-brain/projects.yaml`, if it exists, does **not** already contain `project_alias`. If it does, prompt — suggest a suffixed alias (`<alias>-2`) or ask the user to pick a different one. (Skipped entirely if `--no-registry` is set.)
@@ -90,21 +90,21 @@ The skill **refuses** if any of these are not met. Preconditions 1, 3, 6 apply *
 
 > ### ⛔️ HARD CONSTRAINT — ONE TOOL CALL
 >
-> **Call `${CLAUDE_PLUGIN_ROOT}/scripts/init-brain.sh` ONCE. Nothing else.** No `Read`, no `Write`, no `mkdir`, no `AskUserQuestion`, no pre-check of anything. The script auto-detects the host project, derives alias/title/owner, checks for an existing brain, and refuses cleanly if one is found. You learn about existing brains from the script's exit code, NOT from a Read-tool check before the call. Every pre-script tool call adds 30–60s of Cowork overhead; skip them.
+> **Call `${PROJECT_BRAIN_PACK_ROOT}/scripts/init-brain.sh` ONCE. Nothing else.** No `Read`, no `Write`, no `mkdir`, no user prompts up front, no pre-check of anything. The script auto-detects the host project, derives alias/title/owner, checks for an existing brain, and refuses cleanly if one is found. You learn about existing brains from the script's exit code, NOT from a Read-tool check before the call. Every pre-script tool call adds 30–60s of Cowork overhead; skip them.
 >
-> Strip `${CLAUDE_PLUGIN_ROOT}` and you hit "no such file or directory" — the bare path resolves against the skill's own dir. Keep it.
+> Strip `${PROJECT_BRAIN_PACK_ROOT}` and you hit "no such file or directory" — the bare path resolves against the skill's own dir. Keep it.
 
 **Default path — zero flags, one tool call:**
 
 ```bash
-"${CLAUDE_PLUGIN_ROOT}/scripts/init-brain.sh"
+"${PROJECT_BRAIN_PACK_ROOT}/scripts/init-brain.sh"
 ```
 
 That's it. The script detects home via `PROJECT_BRAIN_HOME → COWORK_WORKSPACE_FOLDER → CODEX_PROJECT_ROOT → CLAUDE_PROJECT_ROOT → .git walk → cwd`, derives alias + title from the basename, writes the scaffold, and prints one success line including the detection source. Pass `--home`/`--alias`/`--title`/`--owner` only when the user explicitly overrode something in this conversation.
 
 **Recovery path — brain already exists:**
 
-The script refuses with exit 1 and prints `error: project-brain already scaffolded at <path>. Pass --force to back up...`. Only THEN ask the user via one `AskUserQuestion`: "Overwrite the existing brain (backs up to `project-brain.bak.<timestamp>/`) or cancel?" If overwrite, re-invoke with `--force`. If cancel, exit with a one-liner. Total tool calls in that case: 3 (script → ask → script). In the happy path: 1.
+The script refuses with exit 1 and prints `error: project-brain already scaffolded at <path>. Pass --force to back up...`. Only THEN ask the user: "Overwrite the existing brain (backs up to `project-brain.bak.<timestamp>/`) or cancel?" If overwrite, re-invoke with `--force`. If cancel, exit with a one-liner. Total tool calls in that case: 3 (script → ask → script). In the happy path: 1.
 
 **Never** call `Read` to check for CONVENTIONS.md, `mkdir`, `mv`, or any individual scaffolding step yourself. The script does all of it, in ~100ms, in one permission prompt.
 
@@ -213,7 +213,7 @@ Reads `verbosity` from `<brain>/config.yaml` (env override: `PROJECT_BRAIN_VERBO
 
 | Failure                                | Cause                                                        | Response                                      |
 |----------------------------------------|--------------------------------------------------------------|-----------------------------------------------|
-| Brain already scaffolded at target     | `<brain_path>/CONVENTIONS.md` exists                        | prompt via AskUserQuestion — `overwrite` renames existing to `.bak.<timestamp>/` and proceeds; `cancel` (default) exits cleanly. `--force` skips the prompt and overwrites. `--force` + already-scaffolded always overwrites. |
+| Brain already scaffolded at target     | `<brain_path>/CONVENTIONS.md` exists                        | ask the user to choose — `overwrite` renames existing to `.bak.<timestamp>/` and proceeds; `cancel` (default) exits cleanly. `--force` skips the prompt and overwrites. `--force` + already-scaffolded always overwrites. |
 | Empty `<brain_path>` directory exists  | `<brain_path>/` exists but has no `CONVENTIONS.md`          | proceed silently, treating as an abandoned partial scaffold. Files in the existing dir are overwritten by the fresh scaffold; pre-existing unrelated files are preserved. |
 | Alias collision in `projects.yaml`     | `project_alias` already registered                           | prompt — suggest `<alias>-2` or new alias (or pass `--no-registry` to skip the registry step) |
 | Invalid domain slug                    | One of `domain_taxonomy` fails § 11.1                        | refuse — name the offending slug and the rule it violated |

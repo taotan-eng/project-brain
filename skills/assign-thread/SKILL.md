@@ -36,7 +36,7 @@ Every assignment change is recorded in an audit trail appended to the thread bod
 | `push`            | flag (`--push`)                 | no       | Push to the default remote after commit. Default off.                                           |
 | `--brain=<path>`  | user prompt or cwd inference    | no       | Absolute path to the brain root. Defaults to the nearest ancestor `project-brain/` directory.        |
 
-Prompt strategy: resolve `thread_slug` from cwd. Ask which operation via `AskUserQuestion` if not supplied as a flag. For each operation, prompt for the handles (none for `--clear`). Optionally prompt for a note. Infer `actor` from `--actor <email>` if supplied; otherwise use the literal placeholder `TODO@example.com`. **Do NOT invoke `git config`** — rc4 keeps pre-promote skills git-free.
+Prompt strategy: resolve `thread_slug` from cwd. Ask the user to pick which operation if not supplied as a flag. For each operation, prompt for the handles (none for `--clear`). Optionally prompt for a note. Infer `actor` from `--actor <email>` if supplied; otherwise use the literal placeholder `TODO@example.com`. **Do NOT invoke `git config`** — rc4 keeps pre-promote skills git-free.
 
 | `--dry-run`       | boolean                         | no       | Print the plan (operation, assigned_to changes, audit trail, commit message) without performing any file writes, git mutations, or audit-log writes. See Process § Dry-run semantics. |
 
@@ -59,16 +59,16 @@ The skill **refuses** if any of these are not met.
 
 > ### ⛔️ HARD CONSTRAINT — ONE TOOL CALL
 >
-> **Call `${CLAUDE_PLUGIN_ROOT}/scripts/assign-thread.sh` ONCE.** No `Read` of thread.md, no pre-validation, no `AskUserQuestion` about operation mode when the user's own sentence already reveals it. The script reads thread.md, validates preconditions, mutates frontmatter, appends the audit line, rebuilds indexes, and exits with a clear error if anything fails. You react to the exit code, not to checks you do first.
+> **Call `${PROJECT_BRAIN_PACK_ROOT}/scripts/assign-thread.sh` ONCE.** No `Read` of thread.md, no pre-validation, no extra prompt about operation mode when the user's own sentence already reveals it. The script reads thread.md, validates preconditions, mutates frontmatter, appends the audit line, rebuilds indexes, and exits with a clear error if anything fails. You react to the exit code, not to checks you do first.
 >
-> **Derive the operation from language.** "Assign X to bob" → `--add bob`. "Unassign bob from X" → `--remove bob`. "Who's on X?" → use `review-thread`, not this. Only use `AskUserQuestion` if the user's message leaves the mode genuinely ambiguous.
+> **Derive the operation from language.** "Assign X to bob" → `--add bob`. "Unassign bob from X" → `--remove bob`. "Who's on X?" → use `review-thread`, not this. Only prompt the user if the user's message leaves the mode genuinely ambiguous.
 >
-> Strip `${CLAUDE_PLUGIN_ROOT}` and the bare path resolves against the skill's own dir → "no such file". Keep it.
+> Strip `${PROJECT_BRAIN_PACK_ROOT}` and the bare path resolves against the skill's own dir → "no such file". Keep it.
 
 **One call:**
 
 ```bash
-"${CLAUDE_PLUGIN_ROOT}/scripts/assign-thread.sh" \
+"${PROJECT_BRAIN_PACK_ROOT}/scripts/assign-thread.sh" \
   --brain=<absolute brain path> \
   --slug=<thread_slug>          \
   --add=<handles>               \  # or --remove, --set, --clear — pick from user's language
@@ -170,7 +170,7 @@ No other fields are touched. `status`, `maturity`, `parked_*`, `archived_*` are 
 | Thread slug does not resolve                   | Typo; wrong cwd                                                               | refuse — list nearby slugs (levenshtein) and re-prompt                 |
 | Thread in `archived`                           | Terminal state                                                                | refuse — suggest archiving was final or manual fix needed              |
 | Multiple mutation flags supplied               | `--add` + `--remove` or similar                                               | refuse — clarify that exactly one operation per invocation             |
-| No mutation flag supplied                      | User forgot to specify an operation                                           | refuse — ask which operation via `AskUserQuestion`                     |
+| No mutation flag supplied                      | User forgot to specify an operation                                           | refuse — ask the user which operation                                  |
 | `--clear` with non-empty `handles`             | Conflicting args                                                              | refuse — `--clear` takes no handles                                    |
 | Empty `handles` for `--add`, `--remove`, `--set` | Invalid input                                                                | refuse — ask for a non-empty handle list                               |
 | Uncommitted edits to thread.md                 | Concurrent edit risk                                                          | refuse — ask user to commit or stash                                   |

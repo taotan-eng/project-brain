@@ -31,7 +31,7 @@ This is the counterpart to `record-artifact`. Where `record-artifact` grows the 
 | `--since=<ts>`   | flag                    | no       | Show transcript entries at or after this ISO8601 timestamp. Combined with `--last` as an upper bound. |
 | `--brain=<path>` | cwd inference           | no       | Absolute path to brain. Defaults to nearest ancestor containing `CONVENTIONS.md`. |
 
-Prompt strategy: infer `slug` from cwd. Ask via `AskUserQuestion` only if the cwd is outside any thread dir and the user didn't name one.
+Prompt strategy: infer `slug` from cwd. Ask the user only if the cwd is outside any thread dir and the user didn't name one.
 
 ## Preconditions
 
@@ -45,7 +45,7 @@ Skill is pure read-only — no writes, no shell spawns beyond awk/sed/find — s
 
 > ### ⛔️ HARD CONSTRAINT — ONE TOOL CALL + VERBATIM ECHO AS MARKDOWN
 >
-> **Call `${CLAUDE_PLUGIN_ROOT}/scripts/review-thread.sh` ONCE.** No `Read` of thread.md, transcript.md, or artifacts — the script parses and renders everything.
+> **Call `${PROJECT_BRAIN_PACK_ROOT}/scripts/review-thread.sh` ONCE.** No `Read` of thread.md, transcript.md, or artifacts — the script parses and renders everything.
 >
 > **After the bash call returns, paste the script's stdout into your assistant message in full as Markdown — do NOT wrap it in a fenced code block.** The script outputs Markdown (H1/H2 headers, bullet lists, `file://` links, *italics*); a `` ``` `` wrapper would prevent every part of it from rendering. Do not summarize. Do not transform. Do not rely on the Bash tool's result card to display it for you — the result card collapses by default, so an empty (or fenced) assistant message means the user sees only "Ran a command >" with no detail.
 >
@@ -57,7 +57,7 @@ Skill is pure read-only — no writes, no shell spawns beyond awk/sed/find — s
 **One call:**
 
 ```bash
-"${CLAUDE_PLUGIN_ROOT}/scripts/review-thread.sh" \
+"${PROJECT_BRAIN_PACK_ROOT}/scripts/review-thread.sh" \
   --brain=<absolute brain path> \
   --slug=<thread-slug>          \
   [--full]                      \
