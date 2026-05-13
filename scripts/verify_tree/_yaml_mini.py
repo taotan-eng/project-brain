@@ -70,8 +70,35 @@ def _parse_scalar(raw: str) -> Any:
     if len(raw) >= 2 and raw[0] == raw[-1] and raw[0] in ("'", '"'):
         inner = raw[1:-1]
         if raw[0] == '"':
-            # Minimal escape handling — \n, \t, \\, \"
-            return inner.encode("utf-8").decode("unicode_escape")
+            # Minimal escape handling — \n, \t, \\, \" — processed
+            # character-by-character to preserve non-ASCII Unicode codepoints.
+            # The earlier `inner.encode("utf-8").decode("unicode_escape")`
+            # roundtrip corrupted any high byte (e.g. em-dash \xe2\x80\x94
+            # became "â\\x80\\x94") because unicode_escape interprets
+            # high bytes as Latin-1. See test_yaml_mini_unicode_preserves
+            # in test_verify_tree.py.
+            out: list[str] = []
+            i = 0
+            while i < len(inner):
+                ch = inner[i]
+                if ch == "\\" and i + 1 < len(inner):
+                    nxt = inner[i + 1]
+                    if nxt == "n":
+                        out.append("\n")
+                    elif nxt == "t":
+                        out.append("\t")
+                    elif nxt == "\\":
+                        out.append("\\")
+                    elif nxt == '"':
+                        out.append('"')
+                    else:
+                        out.append(ch)
+                        out.append(nxt)
+                    i += 2
+                else:
+                    out.append(ch)
+                    i += 1
+            return "".join(out)
         return inner  # single-quoted: literal, except doubled '' → '
     # Numbers (but ISO-8601 timestamps and slugs go through as strings)
     if _INT_RE.match(raw):
