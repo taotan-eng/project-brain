@@ -52,16 +52,16 @@ The skill **refuses** if any of these are not met. It does not silently fix.
 
 > ### ⛔️ HARD CONSTRAINT — ONE TOOL CALL
 >
-> **Call `${CLAUDE_PLUGIN_ROOT}/scripts/new-thread.sh` ONCE.** No `Read` of `config.yaml`, no `Read` of templates, no `Write` / `Edit` / `mkdir`. The script reads config.yaml itself, validates the slug, scaffolds, and rebuilds indexes. Every pre-script tool call adds 30–60s of Cowork overhead; skip them.
+> **Call `${PROJECT_BRAIN_PACK_ROOT}/scripts/new-thread.sh` ONCE.** No `Read` of `config.yaml`, no `Read` of templates, no `Write` / `Edit` / `mkdir`. The script reads config.yaml itself, validates the slug, scaffolds, and rebuilds indexes. Every pre-script tool call adds 30–60s of Cowork overhead; skip them.
 >
 > **DERIVE `slug`, `title`, `purpose` from the user's own message before asking.** "Start a thread about authentication" → `slug=authentication`, `title="Authentication"`, `purpose="thread for authentication"`. Only use `AskUserQuestion` if slug/title are genuinely ambiguous (e.g., the user said "new thread" with no topic).
 >
-> Strip `${CLAUDE_PLUGIN_ROOT}` and the bare `scripts/new-thread.sh` resolves against the skill's own dir → "no such file". Keep it.
+> Strip `${PROJECT_BRAIN_PACK_ROOT}` and the bare `scripts/new-thread.sh` resolves against the skill's own dir → "no such file". Keep it.
 
 **One call, happy path:**
 
 ```bash
-"${CLAUDE_PLUGIN_ROOT}/scripts/new-thread.sh" \
+"${PROJECT_BRAIN_PACK_ROOT}/scripts/new-thread.sh" \
   --brain='<absolute brain path>' \
   --slug='<slug>' \
   --title='<title>' \

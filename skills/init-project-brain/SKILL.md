@@ -90,14 +90,14 @@ The skill **refuses** if any of these are not met. Preconditions 1, 3, 6 apply *
 
 > ### ⛔️ HARD CONSTRAINT — ONE TOOL CALL
 >
-> **Call `${CLAUDE_PLUGIN_ROOT}/scripts/init-brain.sh` ONCE. Nothing else.** No `Read`, no `Write`, no `mkdir`, no `AskUserQuestion`, no pre-check of anything. The script auto-detects the host project, derives alias/title/owner, checks for an existing brain, and refuses cleanly if one is found. You learn about existing brains from the script's exit code, NOT from a Read-tool check before the call. Every pre-script tool call adds 30–60s of Cowork overhead; skip them.
+> **Call `${PROJECT_BRAIN_PACK_ROOT}/scripts/init-brain.sh` ONCE. Nothing else.** No `Read`, no `Write`, no `mkdir`, no `AskUserQuestion`, no pre-check of anything. The script auto-detects the host project, derives alias/title/owner, checks for an existing brain, and refuses cleanly if one is found. You learn about existing brains from the script's exit code, NOT from a Read-tool check before the call. Every pre-script tool call adds 30–60s of Cowork overhead; skip them.
 >
-> Strip `${CLAUDE_PLUGIN_ROOT}` and you hit "no such file or directory" — the bare path resolves against the skill's own dir. Keep it.
+> Strip `${PROJECT_BRAIN_PACK_ROOT}` and you hit "no such file or directory" — the bare path resolves against the skill's own dir. Keep it.
 
 **Default path — zero flags, one tool call:**
 
 ```bash
-"${CLAUDE_PLUGIN_ROOT}/scripts/init-brain.sh"
+"${PROJECT_BRAIN_PACK_ROOT}/scripts/init-brain.sh"
 ```
 
 That's it. The script detects home via `PROJECT_BRAIN_HOME → COWORK_WORKSPACE_FOLDER → CODEX_PROJECT_ROOT → CLAUDE_PROJECT_ROOT → .git walk → cwd`, derives alias + title from the basename, writes the scaffold, and prints one success line including the detection source. Pass `--home`/`--alias`/`--title`/`--owner` only when the user explicitly overrode something in this conversation.

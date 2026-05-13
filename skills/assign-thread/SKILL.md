@@ -59,16 +59,16 @@ The skill **refuses** if any of these are not met.
 
 > ### ⛔️ HARD CONSTRAINT — ONE TOOL CALL
 >
-> **Call `${CLAUDE_PLUGIN_ROOT}/scripts/assign-thread.sh` ONCE.** No `Read` of thread.md, no pre-validation, no `AskUserQuestion` about operation mode when the user's own sentence already reveals it. The script reads thread.md, validates preconditions, mutates frontmatter, appends the audit line, rebuilds indexes, and exits with a clear error if anything fails. You react to the exit code, not to checks you do first.
+> **Call `${PROJECT_BRAIN_PACK_ROOT}/scripts/assign-thread.sh` ONCE.** No `Read` of thread.md, no pre-validation, no `AskUserQuestion` about operation mode when the user's own sentence already reveals it. The script reads thread.md, validates preconditions, mutates frontmatter, appends the audit line, rebuilds indexes, and exits with a clear error if anything fails. You react to the exit code, not to checks you do first.
 >
 > **Derive the operation from language.** "Assign X to bob" → `--add bob`. "Unassign bob from X" → `--remove bob`. "Who's on X?" → use `review-thread`, not this. Only use `AskUserQuestion` if the user's message leaves the mode genuinely ambiguous.
 >
-> Strip `${CLAUDE_PLUGIN_ROOT}` and the bare path resolves against the skill's own dir → "no such file". Keep it.
+> Strip `${PROJECT_BRAIN_PACK_ROOT}` and the bare path resolves against the skill's own dir → "no such file". Keep it.
 
 **One call:**
 
 ```bash
-"${CLAUDE_PLUGIN_ROOT}/scripts/assign-thread.sh" \
+"${PROJECT_BRAIN_PACK_ROOT}/scripts/assign-thread.sh" \
   --brain=<absolute brain path> \
   --slug=<thread_slug>          \
   --add=<handles>               \  # or --remove, --set, --clear — pick from user's language

@@ -50,7 +50,7 @@ The script routes markdown inputs to `artifacts/` (frontmatter is injected, V-06
 
 > ### ⛔️ HARD CONSTRAINT — ONE TOOL CALL
 >
-> **Call `${CLAUDE_PLUGIN_ROOT}/scripts/record-artifact.sh` ONCE.** No `mkdir`, no `Write` of artifact files, no `Edit` of transcript.md, no `verify-tree` call. The script routes markdown to `artifacts/` (with frontmatter injected), non-markdown to `attachments/`, always appends a transcript breadcrumb, and validates.
+> **Call `${PROJECT_BRAIN_PACK_ROOT}/scripts/record-artifact.sh` ONCE.** No `mkdir`, no `Write` of artifact files, no `Edit` of transcript.md, no `verify-tree` call. The script routes markdown to `artifacts/` (with frontmatter injected), non-markdown to `attachments/`, always appends a transcript breadcrumb, and validates.
 >
 > **Derive title, slug, and artifact_kind from context:**
 > - `--slug` from cwd (nearest `threads/<slug>/` ancestor)
@@ -62,7 +62,7 @@ The script routes markdown inputs to `artifacts/` (frontmatter is injected, V-06
 **Default mode** (new separate file):
 
 ```bash
-"${CLAUDE_PLUGIN_ROOT}/scripts/record-artifact.sh" \
+"${PROJECT_BRAIN_PACK_ROOT}/scripts/record-artifact.sh" \
   --brain=<absolute brain path> \
   --slug=<thread-slug>          \
   --title='<title>'             \
@@ -74,7 +74,7 @@ The script routes markdown inputs to `artifacts/` (frontmatter is injected, V-06
 **Append mode** (straight into transcript.md, no separate file):
 
 ```bash
-"${CLAUDE_PLUGIN_ROOT}/scripts/record-artifact.sh" \
+"${PROJECT_BRAIN_PACK_ROOT}/scripts/record-artifact.sh" \
   --brain=<absolute brain path> \
   --slug=<thread-slug>          \
   --title='<title>'             \

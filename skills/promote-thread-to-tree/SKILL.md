@@ -126,7 +126,7 @@ Promotion supports four modes (CONVENTIONS § 4.2):
 For `--mode=local`, invoke the one-shot script:
 
 ```bash
-"${CLAUDE_PLUGIN_ROOT}/scripts/promote-local.sh" \
+"${PROJECT_BRAIN_PACK_ROOT}/scripts/promote-local.sh" \
   --brain=<absolute brain path> \
   --slug=<thread_slug>          \
   [--leaves=<csv>]              \  # subset of staged leaves; omit for all

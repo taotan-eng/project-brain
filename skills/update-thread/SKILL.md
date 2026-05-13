@@ -60,7 +60,7 @@ The skill **refuses** if any of these are not met.
 
 > ### ⛔️ HARD CONSTRAINT — ONE TOOL CALL
 >
-> **Call `${CLAUDE_PLUGIN_ROOT}/scripts/update-thread.sh` ONCE.** No `Read` of thread.md, no pre-validation, no `git` calls. The script reads frontmatter, applies the operation, rebuilds indexes. React to its exit code.
+> **Call `${PROJECT_BRAIN_PACK_ROOT}/scripts/update-thread.sh` ONCE.** No `Read` of thread.md, no pre-validation, no `git` calls. The script reads frontmatter, applies the operation, rebuilds indexes. React to its exit code.
 >
 > **Derive `--operation` + operation-specific fields from language.**
 > - "Lock this thread" / "bump to locking" → `--operation=refine --target=locking`
@@ -73,7 +73,7 @@ The skill **refuses** if any of these are not met.
 **One call:**
 
 ```bash
-"${CLAUDE_PLUGIN_ROOT}/scripts/update-thread.sh" \
+"${PROJECT_BRAIN_PACK_ROOT}/scripts/update-thread.sh" \
   --brain=<absolute brain path> \
   --slug=<thread_slug>          \
   --operation=<op>              \    # refine | lock | merge-into | soft-link-add | soft-link-remove | promote-prep

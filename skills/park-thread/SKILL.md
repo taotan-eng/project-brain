@@ -57,14 +57,14 @@ The skill **refuses** if any of these are not met.
 
 > ### ⛔️ HARD CONSTRAINT — ONE TOOL CALL
 >
-> **Call `${CLAUDE_PLUGIN_ROOT}/scripts/park-thread.sh` ONCE.** No `Read` of thread.md, no pre-flight status check. The script reads frontmatter, determines park vs unpark (from the thread's current `status` or `--unpark` flag), validates, mutates, rebuilds indexes.
+> **Call `${PROJECT_BRAIN_PACK_ROOT}/scripts/park-thread.sh` ONCE.** No `Read` of thread.md, no pre-flight status check. The script reads frontmatter, determines park vs unpark (from the thread's current `status` or `--unpark` flag), validates, mutates, rebuilds indexes.
 >
 > **Derive mode + reason/trigger from language.** "Park this for now, waiting on X" → `--reason='waiting on X'`. "Pick this back up — X just landed" → `--unpark --trigger='X landed'`. Don't ask.
 
 **One call:**
 
 ```bash
-"${CLAUDE_PLUGIN_ROOT}/scripts/park-thread.sh" \
+"${PROJECT_BRAIN_PACK_ROOT}/scripts/park-thread.sh" \
   --brain=<absolute brain path> \
   --slug=<thread_slug>          \
   --reason='<reason>'           \    # park mode
