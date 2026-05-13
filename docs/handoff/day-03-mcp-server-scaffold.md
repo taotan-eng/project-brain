@@ -43,7 +43,7 @@ By the end of this handoff:
 3. Three tools work end-to-end through the server: `new_thread`, `list_threads`, `verify_tree`. Pydantic schemas reject bad input at the MCP boundary before any subprocess invocation.
 4. Three prompts are exposed (`new-thread`, `list-threads`, `verify-tree` — sourced from the corresponding SKILL.md bodies) plus a fallback `run_skill(name: str)` tool that returns the prompt body as a string for MCP clients with poor native prompt support.
 5. Three resources are exposed (URIs: `brain://thread-index`, `brain://current-state`, `brain://CONVENTIONS`).
-6. A smoke test at `scripts/test_smoke_mcp_roundtrip.py` runs the server in-process, calls `new_thread` against a scratch brain, and asserts the thread landed.
+6. A smoke test at `scripts/smoke_mcp_roundtrip.py` runs the server in-process, calls `new_thread` against a scratch brain, and asserts the thread landed.
 7. The evaluation report at `docs/handoff/day-03-evaluation-report.md` documents 8/8 merge criteria pass; the day-3 PR is open against `main` with that report as its body.
 
 ## PR-merge criteria
@@ -56,7 +56,7 @@ By the end of this handoff:
 | 4 | ≥3 tools wired with Pydantic schemas | `tools.py` registers `new_thread`, `list_threads`, `verify_tree`. Each tool has an explicit Pydantic input schema; invalid input raises a Pydantic validation error BEFORE any subprocess call. Smoke test calls each tool at least once. |
 | 5 | ≥3 prompts + `run_skill` fallback | `prompts.py` registers prompts loaded from `skills/new-thread/SKILL.md`, `skills/list-threads/SKILL.md`, `skills/verify-tree/SKILL.md`. The fallback tool `run_skill(name)` accepts a skill name and returns the SKILL.md body. |
 | 6 | ≥3 resources exposed | `resources.py` exposes `brain://thread-index`, `brain://current-state`, `brain://CONVENTIONS`. Each returns the current file content at request time (not cached at import). |
-| 7 | End-to-end smoke test passes | `scripts/test_smoke_mcp_roundtrip.py` exits 0. Asserts: server initializes; client calls `new_thread` with valid args; response is success; the thread directory exists in the scratch brain with frontmatter `id:` matching the slug; validator on the scratch brain reports 0 errors. |
+| 7 | End-to-end smoke test passes | `scripts/smoke_mcp_roundtrip.py` exits 0. Asserts: server initializes; client calls `new_thread` with valid args; response is success; the thread directory exists in the scratch brain with frontmatter `id:` matching the slug; validator on the scratch brain reports 0 errors. |
 | 8 | No regression: validator green + test suite green + Cowork refs not reintroduced | `python3 scripts/verify-tree.py --brain=…` ends `0 errors, 0 warnings`. `python3 -m unittest scripts.test_verify_tree` ends `OK`. `git grep -E '(AskUserQuestion\|TodoWrite\|mcp__cowork__\|mcp__visualize__)' skills/` returns 0 matches. |
 
 Workflow (separate from PR-merge criteria, enforced by exit gate):
@@ -571,7 +571,7 @@ through tools."
 
 ### Spec
 
-`scripts/test_smoke_mcp_roundtrip.py` runs the MCP server in-process (or as a subprocess via stdio), connects an MCP client, and exercises one full roundtrip:
+`scripts/smoke_mcp_roundtrip.py` runs the MCP server in-process (or as a subprocess via stdio), connects an MCP client, and exercises one full roundtrip:
 
 1. `initialize` → server returns capabilities.
 2. `tools/list` → response includes `new_thread`, `list_threads`, `verify_tree`, `run_skill`.
@@ -591,7 +591,7 @@ set -e
 cd /Users/ttan/workspace/Project-Brain/final/project-brain
 
 # Write the smoke test (skeleton — flesh out per current MCP SDK client API)
-cat > scripts/test_smoke_mcp_roundtrip.py <<'PY'
+cat > scripts/smoke_mcp_roundtrip.py <<'PY'
 """Smoke test — MCP server roundtrip against a scratch brain.
 
 Pass: server initializes, lists ≥3 tools / ≥3 prompts / ≥3 resources,
@@ -648,10 +648,10 @@ if __name__ == "__main__":
 PY
 
 # Run it
-python3 scripts/test_smoke_mcp_roundtrip.py | tail -5
+python3 scripts/smoke_mcp_roundtrip.py | tail -5
 
 # Validation
-python3 scripts/test_smoke_mcp_roundtrip.py 2>&1 | tail -1 | grep -q "MCP SMOKE TEST PASSED" \
+python3 scripts/smoke_mcp_roundtrip.py 2>&1 | tail -1 | grep -q "MCP SMOKE TEST PASSED" \
   || { echo "FAIL: MCP smoke test did not pass"; exit 1; }
 
 echo "TASK 5 VALIDATION PASSED"
@@ -660,7 +660,7 @@ echo "TASK 5 VALIDATION PASSED"
 ### Commit
 
 ```bash
-git add scripts/test_smoke_mcp_roundtrip.py
+git add scripts/smoke_mcp_roundtrip.py
 git commit -m "test(mcp): end-to-end MCP roundtrip against scratch brain
 
 Smoke test runs the project-brain-mcp server, exercises tools/list,
@@ -758,7 +758,7 @@ fi
 
 # Criteria 3, 4, 5, 6, 7 — covered by the smoke test
 SMOKE_OK=1
-python3 scripts/test_smoke_mcp_roundtrip.py > /tmp/mcp-smoke-eval.log 2>&1 || SMOKE_OK=0
+python3 scripts/smoke_mcp_roundtrip.py > /tmp/mcp-smoke-eval.log 2>&1 || SMOKE_OK=0
 tail -1 /tmp/mcp-smoke-eval.log | grep -q "MCP SMOKE TEST PASSED" || SMOKE_OK=0
 
 if [ "$SMOKE_OK" = "1" ]; then
