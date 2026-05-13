@@ -1,6 +1,105 @@
 # Installing the `project-brain` skill pack
 
+Two install paths, depending on how you'll use the pack:
+
+- **MCP server (Claude Desktop / Claude Code / any MCP client)** — one command, no clone. Recommended for end users. See `## Install` below.
+- **Manual pack install (development / Cowork / bash-script users)** — clone the repo, point your host runtime at it. See `## Manual pack install (development / Cowork users)` further down.
+
 This file is the **authoritative install procedure** for the pack. The steps below are numbered and deterministic so that either a human or an AI agent can follow them unambiguously. If anything in the top-level `README.md` appears to disagree with this file, **this file wins**.
+
+Tier note: works on Claude Desktop Pro and Free (config-edit path below). Max users will get a one-click Cowork marketplace install later; for now follow the Pro/Free instructions.
+
+## Install
+
+Quickest path (no virtualenv, no PATH setup):
+
+```bash
+uvx project-brain-mcp
+```
+
+`uvx` runs the server in a temporary isolated environment each time it's invoked. Install `uv` first if you don't have it: `curl -LsSf https://astral.sh/uv/install.sh | sh` (macOS / Linux) or follow the instructions at https://docs.astral.sh/uv/.
+
+Alternatives if you prefer a persistent install:
+
+```bash
+pipx install project-brain-mcp        # isolated, but on PATH
+# or
+pip install --user project-brain-mcp  # plain pip user-site install
+```
+
+All three give you a `project-brain-mcp` binary on PATH. The binary speaks MCP over stdio — point your MCP client at it.
+
+## Claude Desktop config
+
+Edit Claude Desktop's MCP config file and add a `project-brain` entry under `mcpServers`. The config file lives at:
+
+- **macOS:** `~/Library/Application Support/Claude/claude_desktop_config.json`
+- **Windows:** `%APPDATA%\Claude\claude_desktop_config.json`
+- **Linux:** `~/.config/Claude/claude_desktop_config.json`
+
+Paste in this snippet (merge into your existing `mcpServers` if you already have one):
+
+```json
+{
+  "mcpServers": {
+    "project-brain": {
+      "command": "uvx",
+      "args": ["project-brain-mcp"],
+      "env": {
+        "PROJECT_BRAIN_HOME": "/absolute/path/to/your/brain"
+      }
+    }
+  }
+}
+```
+
+`PROJECT_BRAIN_HOME` tells the server where the brain on disk lives — the directory containing `thread-index.md`, `current-state.md`, `CONVENTIONS.md`, and the `threads/`, `tree/`, `archive/` subdirectories. If you don't have a brain yet, set this to where you want one and use the `init_project_brain` tool to scaffold it.
+
+If you installed via pipx or pip-user instead of uvx, change `"command": "uvx"` to `"command": "project-brain-mcp"` and drop the `"args"` line.
+
+After editing the config, fully quit and re-launch Claude Desktop. The MCP server is loaded at app startup; live reload does not pick it up.
+
+## Verify
+
+Three steps to confirm the install is working. Each is independent — if step 1 passes, the rest will too.
+
+1. **Confirm the package imports.** Run from a terminal:
+
+    ```bash
+    python3 -c "import project_brain_mcp; print(project_brain_mcp.__version__)"
+    ```
+
+    Expected output: `0.1.0` (or whatever version you installed). A `ModuleNotFoundError` here means the install didn't land in the Python path Claude Desktop will use; check `which python3` and `which project-brain-mcp`.
+
+2. **Ask the agent to list your threads.** Open a new chat in Claude Desktop and prompt:
+
+    > Using project-brain, list my threads.
+
+    The agent should call the `list_threads` tool and show whatever threads exist under `$PROJECT_BRAIN_HOME/threads/`. An empty list against a fresh brain is still a successful call.
+
+3. **Ask the agent to create a thread.** In the same chat:
+
+    > Create a new thread called "install test" with purpose "verifying the MCP install."
+
+    The agent should call the `new_thread` tool. After it reports success, check the filesystem:
+
+    ```bash
+    ls "$PROJECT_BRAIN_HOME/threads/install-test/"
+    ```
+
+    Expected: `thread.md`, `decisions-candidates.md`, `open-questions.md`. If those files are there, the roundtrip works end-to-end.
+
+If any step fails, check `~/Library/Logs/Claude/mcp.log` (macOS) or the equivalent on your OS for server-side errors. Common issues:
+
+- `PROJECT_BRAIN_HOME` not set or points at a non-existent path — fix the config and restart.
+- `uvx` not on Claude Desktop's PATH — Claude Desktop inherits PATH from your login shell at launch time; if you installed uv in a non-default location, give the full path in `"command"`.
+- The brain directory is missing required files — run the `init_project_brain` tool against an empty target dir to scaffold one.
+
+---
+
+## Manual pack install (development / Cowork users)
+
+The rest of this file documents the legacy manual install — cloning the repo into a host runtime that loads bash scripts and SKILL.md prompts directly (Cowork, raw Claude Code with on-disk plugins, etc.). For most v1.0 end users the MCP server path above is simpler. Keep reading only if you're developing the pack or running it on a host without MCP support.
 
 ## Prerequisites
 
