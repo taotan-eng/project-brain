@@ -1,6 +1,6 @@
 ---
 name: review-parked-threads
-description: Read-only periodic audit of parked threads. Surfaces three categories of action-worthy parked threads — actionable (unpark_trigger set; human decides if condition fired), stale (parked ≥N days; candidates for unpark or archive), and hygiene warnings (no unpark_trigger; need explicit reason for return). Use when the user says "review parked threads", "what parked threads need attention", "audit the park queue", or as a weekly/monthly cadence check. Complements discover-threads --status=parked with automatic age and trigger analysis.
+description: Read-only periodic audit of parked threads. Surfaces three categories of action-worthy parked threads — actionable (unpark_trigger set; human decides if condition fired), stale (parked ≥N days; candidates for unpark or archive), and hygiene warnings (no unpark_trigger; need explicit reason for return). Use when the user says "review parked threads", "what parked threads need attention", "audit the park queue", or as a weekly/monthly cadence check. Complements list-threads --status=parked with automatic age and trigger analysis.
 version: 1.0.0-rc4
 pack: project-brain
 requires:
@@ -282,7 +282,7 @@ Soft failures (malformed frontmatter) do not cause refusal — they are reported
 
 ## Related skills
 
-- **Complements:** `discover-threads --status=parked` — raw listing without age/trigger analysis. `discover-threads` is a general-purpose query tool; `review-parked-threads` is a domain-specific audit.
+- **Complements:** `list-threads --status=parked` — raw listing without age/trigger analysis. `list-threads` is a general-purpose query tool; `review-parked-threads` is a domain-specific audit.
 - **Invoked before:** `park-thread --unpark` — surface actionable parked threads, then unpark one.
 - **Invoked before:** `discard-thread` — surface stale parked threads, then archive ones that are truly dead.
 - **Invoked before:** `update-thread --unpark-trigger=...` — surface no-trigger threads, then add missing triggers.

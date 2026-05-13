@@ -17,7 +17,7 @@ Brings an archived thread back to active. The inverse of `discard-thread`. Moves
 - "Restore the X thread" / "unarchive X" / "bring X back"
 - "I changed my mind on discarding X — keep working on it"
 - "Mistakenly discarded — restore"
-- After cleaning up a `discover-threads --include-archived` review and picking one to revive
+- After cleaning up a `list-threads --include-archived` review and picking one to revive
 
 ## Inputs
 
@@ -62,7 +62,7 @@ After success, echo the script's stdout in your response message verbatim — do
 
 ## Failure modes
 
-- `archived thread not found` → exit 1. The slug doesn't exist under `archive/`. Check spelling or run `/discover-threads --include-archived` to list archived slugs.
+- `archived thread not found` → exit 1. The slug doesn't exist under `archive/`. Check spelling or run `/list-threads --include-archived` to list archived slugs.
 - `target already exists` → exit 1. An active thread with the same slug exists. Either pick a different slug or rename the existing one first.
 - `cannot restore a <status> thread (expected: archived)` → exit 1. The thread under `archive/` doesn't have `status: archived` in frontmatter — the brain is half-broken. Run `verify-tree` to diagnose.
 
@@ -79,7 +79,7 @@ After success, echo the script's stdout in your response message verbatim — do
 
 - **`discard-thread`**: the operation this undoes.
 - **`discard-promotion`**: when an in-review thread's PR closed unmerged — different recovery path (thread is still in `threads/`, just stuck in `in-review`). Don't use restore-thread for that case.
-- **`discover-threads --include-archived`**: lists archived threads so you can find the slug to restore.
+- **`list-threads --include-archived`**: lists archived threads so you can find the slug to restore.
 
 ## Compatibility
 

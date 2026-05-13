@@ -239,7 +239,7 @@ The thread is now complete. It is no longer in `current-state.md` (only active a
 
 `project-brain/current-state.md` no longer lists it (only active and parked threads).
 
-Run `skill: discover-threads --status=archived --owner=you@company.com` to find all your archived threads — good for "what did I decide on hiring?" queries six months from now.
+Run `skill: list-threads --status=archived --owner=you@company.com` to find all your archived threads — good for "what did I decide on hiring?" queries six months from now.
 
 Open `project-brain/tree/operations/hiring/NODE.md`. It now lists `hire-backend-2.md` as a leaf. The tree is growing.
 
@@ -249,7 +249,7 @@ Open `project-brain/tree/operations/hiring/NODE.md`. It now lists `hire-backend-
 
 One short scenario per cross-cutting skill:
 
-**discover-threads:** Your engineering lead asks: "What am I assigned to?" She runs `skill: discover-threads --assigned="sarah@company.com" --status=active`. The output is a table of 5 threads she owns, with maturity and review status. One is `design-graphql-caching` in `locking` maturity, ready to promote. Another is `api-rate-limits` in `parked` with a trigger "after Q2 launches". No agent conversation needed — it's a fast query.
+**list-threads:** Your engineering lead asks: "What am I assigned to?" She runs `skill: list-threads --assigned="sarah@company.com" --status=active`. The output is a table of 5 threads she owns, with maturity and review status. One is `design-graphql-caching` in `locking` maturity, ready to promote. Another is `api-rate-limits` in `parked` with a trigger "after Q2 launches". No agent conversation needed — it's a fast query.
 
 **assign-thread:** Your manager says: "Can you own the observability roadmap thread?" You run `skill: assign-thread --thread=observability-v2 --add="you@company.com"`. The thread's `assigned_to` list grows (multiple people can own one thread). An audit line is appended to the thread body.
 
@@ -278,4 +278,4 @@ You didn't set up any infrastructure. The tree is reviewable as code in a PR, an
 - Read `INSTALL.md` if you want the authoritative step-by-step install procedure for a different runtime.
 - Read `CONVENTIONS.md` § 10 if you want to customize the domain taxonomy, debate personas, or build toolchain for your project.
 - Read `CONTRIBUTING.md` if you want to write a new skill or extend the pack.
-- Run `skill: discover-threads` and `skill: review-parked-threads` to start querying your brain once it has threads.
+- Run `skill: list-threads` and `skill: review-parked-threads` to start querying your brain once it has threads.

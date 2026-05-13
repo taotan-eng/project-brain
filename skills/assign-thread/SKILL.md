@@ -127,7 +127,7 @@ Print the plan to stdout including a clear "before" and "after" view of the `ass
 - Old and new `assigned_to` lists (or note if field was absent).
 - Handles that were skipped (if any) with a brief explanation.
 - The audit-trail entry that was appended.
-- A next-step suggestion (e.g., "Assigned to alice,bob. Run `discover-threads --assigned=alice` to find all threads assigned to Alice.").
+- A next-step suggestion (e.g., "Assigned to alice,bob. Run `list-threads --assigned=alice` to find all threads assigned to Alice.").
 
 **State passed forward.**
 
@@ -181,7 +181,7 @@ No other fields are touched. `status`, `maturity`, `parked_*`, `archived_*` are 
 
 ## Related skills
 
-- **`discover-threads --assigned=<handle>`** — find threads assigned to a given handle (not yet implemented; design sketch in pack roadmap).
+- **`list-threads --assigned=<handle>`** — find threads assigned to a given handle (not yet implemented; design sketch in pack roadmap).
 - **`update-thread`** — for other structured thread edits (maturity, candidates, soft_links).
 - **`park-thread`**, **`discard-thread`** — other lifecycle operations; coordinate with assignment (e.g., unassign on discard).
 - **`verify-tree`** — run anytime to validate the tree; called automatically by this skill.

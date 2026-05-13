@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-# discover-threads.sh — one-shot thread query.
+# list-threads.sh — one-shot thread query.
 #
 # Walks threads/*/thread.md and optionally archive/*/thread.md, parses each
 # file's YAML frontmatter, applies filters, sorts, and renders the matching
 # rows. Pure read-only; replaces the previous LLM-orchestrated multi-step
-# walk that closed bug #2 (P2: discover-threads slow).
+# walk that closed bug #2 (P2: list-threads slow).
 #
 # Usage:
-#   scripts/discover-threads.sh \
+#   scripts/list-threads.sh \
 #       --brain=<path>                   \
 #       [--status=<csv>]                 \  # active,parked,in-review,archived (default: all non-archived)
 #       [--owner=<substring>]            \

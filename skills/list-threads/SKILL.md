@@ -1,5 +1,5 @@
 ---
-name: discover-threads
+name: list-threads
 description: Read-only discovery skill that queries per-thread frontmatter ad-hoc with rich filters (status, assignment, maturity, domain, review requirement, stale-thread detection, PR state) and returns filtered views on demand. Works even if thread-index.md is stale. Supports table, JSON, CSV, YAML, and path-only output formats. Use when the user says "what threads are assigned to me", "what parked threads are blocking promotion", "what stale threads in <some-domain>", "threads requiring two-human review", or needs a machine-readable feed for downstream tooling.
 version: 1.0.0-rc4
 pack: project-brain
@@ -9,9 +9,9 @@ requires:
   - Bash (optional; only for PR state checks via gh)
 ---
 
-# discover-threads
+# list-threads
 
-The `verify-tree --rebuild-index` skill regenerates the aggregate `thread-index.md` on every write. But that file is a snapshot, not a live query engine. `discover-threads` is the counterpart: it reads per-thread frontmatter directly, applies rich filters on demand (status, assignment, maturity, domain, stale-thread detection, review policy), and streams results in the format the user needs — table, JSON, CSV, YAML, or plain file paths.
+The `verify-tree --rebuild-index` skill regenerates the aggregate `thread-index.md` on every write. But that file is a snapshot, not a live query engine. `list-threads` is the counterpart: it reads per-thread frontmatter directly, applies rich filters on demand (status, assignment, maturity, domain, stale-thread detection, review policy), and streams results in the format the user needs — table, JSON, CSV, YAML, or plain file paths.
 
 The skill is read-only. It works even when `thread-index.md` and `current-state.md` are stale or missing — the source of truth is always the per-thread files themselves (CONVENTIONS § 1.1). Use this when you need live inventory that is guaranteed to be up-to-date with the current working tree state, or when you need to export thread data to downstream systems (dashboards, CI checks, team tools).
 
@@ -73,7 +73,7 @@ The skill **refuses** if any of these are not met.
 
 > ### ⛔️ HARD CONSTRAINT — ONE TOOL CALL + VERBATIM ECHO AS MARKDOWN
 >
-> **Call `${CLAUDE_PLUGIN_ROOT}/scripts/discover-threads.sh` ONCE.** No `Read` of thread.md files, no manual frontmatter parsing, no `glob` walks. The script enumerates threads, parses frontmatter, applies filters, sorts, and renders the result.
+> **Call `${CLAUDE_PLUGIN_ROOT}/scripts/list-threads.sh` ONCE.** No `Read` of thread.md files, no manual frontmatter parsing, no `glob` walks. The script enumerates threads, parses frontmatter, applies filters, sorts, and renders the result.
 >
 > **After the bash call returns, paste the script's stdout into your assistant message in full as Markdown — do NOT wrap it in a fenced code block.** In `--format=table` (default) the output is a Markdown table whose `slug` cells are clickable `file://` links to the thread.md; in `--format=json|csv|yaml|paths` the output is plain text. Either way, do not summarize and do not rely on the Bash tool's result card — it collapses by default. An empty (or fenced) assistant message means the user sees only "Ran a command >" with no detail.
 >
@@ -89,7 +89,7 @@ The skill **refuses** if any of these are not met.
 **One call:**
 
 ```bash
-"${CLAUDE_PLUGIN_ROOT}/scripts/discover-threads.sh" \
+"${CLAUDE_PLUGIN_ROOT}/scripts/list-threads.sh" \
   --brain=<absolute brain path> \
   [--status=<csv>]              \    # active,parked,in-review,archived (default excludes archived)
   [--owner=<substring>]         \    # case-insensitive substring on owner
@@ -140,7 +140,7 @@ None. The skill performs no `git add`, `git commit`, `git push`, or any other mu
 
 - Count of threads matched and filters applied (e.g. "12 threads matched; 8 shown (limit 10)").
 - Warnings (e.g. "2 threads skipped due to malformed frontmatter" or "gh CLI not available; pr_state column omitted").
-- Output path or stream indication (e.g. "Results below" for stdout, or "Written to discover-threads-2026-04-22.json").
+- Output path or stream indication (e.g. "Results below" for stdout, or "Written to list-threads-2026-04-22.json").
 - Next-step suggestion sized to the context (e.g. "Run `update-thread --assigned=tom` to modify assignment" or "Pass results to `xargs` to operate on matching threads").
 
 **State passed forward.** For programmatic callers:
@@ -204,43 +204,43 @@ None. This is a read-only query skill. No frontmatter fields in any file are mod
 
 ### "What threads are assigned to me?"
 ```
-discover-threads --assigned=tom --format=table
+list-threads --assigned=tom --format=table
 ```
 Returns all threads (active, parked, in-review) where `assigned_to` contains "tom", in markdown table format.
 
 ### "What stale threads in `<some-domain>`?"
 ```
-discover-threads --domain=<some-domain> --modified-before=30d --format=table
+list-threads --domain=<some-domain> --modified-before=30d --format=table
 ```
 Returns active/parked/in-review threads under that domain not modified in the last 30 days. Substitute whatever domain you actually have leaves under — the pack ships no domains by default; they emerge organically as you promote.
 
 ### "What parked threads are actionable?"
 ```
-discover-threads --status=parked --unpark-trigger-set --format=table
+list-threads --status=parked --unpark-trigger-set --format=table
 ```
 Returns parked threads with `unpark_trigger` set — those with a defined resumption condition.
 
 ### "What threads require two-human review?"
 ```
-discover-threads --review-requirement=two-human --format=json
+list-threads --review-requirement=two-human --format=json
 ```
 Returns all matching threads as JSON for downstream processing.
 
 ### "Feed a dashboard with live thread state"
 ```
-discover-threads --status=active,in-review --format=json > threads.json
+list-threads --status=active,in-review --format=json > threads.json
 ```
 Exports the current snapshot of active and in-review threads to a file for CI/dashboard ingestion.
 
 ### "What in-review threads have open PRs?"
 ```
-discover-threads --status=in-review --has-pr --check-pr-state --format=table
+list-threads --status=in-review --has-pr --check-pr-state --format=table
 ```
 Returns in-review threads with PR URLs, enriched with current PR state (OPEN, DRAFT, MERGED, CLOSED).
 
 ### "Export matching thread paths for batch operations"
 ```
-discover-threads --assigned=alice --json-paths-only | xargs -I {} sh -c 'cd {} && update-thread --...'
+list-threads --assigned=alice --json-paths-only | xargs -I {} sh -c 'cd {} && update-thread --...'
 ```
 Streams file paths for piping to other tools.
 
@@ -280,10 +280,10 @@ Soft failures (malformed frontmatter, PR fetch errors) do not cause the skill to
 
 ## Related skills
 
-- **Complements:** `verify-tree --rebuild-index` — that skill regenerates the aggregate index on writes; `discover-threads` queries the live source on demand.
-- **Invoked before:** `update-thread`, `park-thread`, `discard-thread` — use `discover-threads` to find threads matching criteria, then invoke mutations on the results.
+- **Complements:** `verify-tree --rebuild-index` — that skill regenerates the aggregate index on writes; `list-threads` queries the live source on demand.
+- **Invoked before:** `update-thread`, `park-thread`, `discard-thread` — use `list-threads` to find threads matching criteria, then invoke mutations on the results.
 - **Invoked before:** `assign-thread` (future skill) — discovery identifies threads needing assignment changes.
-- **Complements:** `materialize-context` — after `discover-threads` finds threads, `materialize-context` can fetch their linked specs.
+- **Complements:** `materialize-context` — after `list-threads` finds threads, `materialize-context` can fetch their linked specs.
 - **Coordinates with:** any external tool (dashboards, CI, reporting) — the `--format=json` or `--format=paths` output integrates with downstream systems.
 
 ## Asset dependencies

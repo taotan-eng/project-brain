@@ -3,7 +3,7 @@ description: Query threads by status, owner, domain, staleness, or PR state
 argument-hint: "[--status=... --owner=... --assigned=... --domain=... --modified-before=... --limit=N --format=table|json|csv|yaml|paths]"
 ---
 
-Run the `discover-threads` skill — pure read-only thread query. Invoke `${CLAUDE_PLUGIN_ROOT}/scripts/discover-threads.sh` once with `--brain=<path>` plus filter flags derived from the user's question. Examples:
+Run the `list-threads` skill — pure read-only thread query. Invoke `${CLAUDE_PLUGIN_ROOT}/scripts/list-threads.sh` once with `--brain=<path>` plus filter flags derived from the user's question. Examples:
 
 - "what threads are assigned to alice" → `--assigned=alice`
 - "stale threads in `<a domain the user has actually used>`" → `--domain=<that-domain> --modified-before=<30-days-ago>`

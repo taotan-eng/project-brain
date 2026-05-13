@@ -64,7 +64,7 @@ NL_SKILL_HINTS = {
                         r"\bappend to transcript\b", r"\battach (this|that)\b"],
     "review-thread": [r"\breview (the |this )?thread\b", r"\bshow (me )?the transcript\b",
                       r"\bwhat'?s in (this )?thread\b"],
-    "discover-threads": [r"\bdiscover threads\b", r"\bwhat threads\b",
+    "list-threads": [r"\bdiscover threads\b", r"\bwhat threads\b",
                          r"\b(stale|parked|active) threads\b"],
     "update-thread": [r"\bupdate (the )?thread\b", r"\b(bump|lock) maturity\b",
                       r"\b(add|remove|rename) (a )?candidate\b"],

@@ -201,7 +201,7 @@ Cross-cutting, invokable from anywhere:
 flowchart LR
     MC([materialize-context]) -.read-only resolver.- ALL[every phase]
     VT([verify-tree]) -.read-only validator + index rebuilder.- ALL
-    DT([discover-threads]) -.read-only fleet query.- ALL
+    DT([list-threads]) -.read-only fleet query.- ALL
     RP([review-parked-threads]) -.read-only parked-triage report.- ALL
     AT([assign-thread]) -.write: assigned_to + audit trail.- ALL
 ```
@@ -225,7 +225,7 @@ Each row is an owned lifecycle transition — or, for the read-only query skills
 | 9 | [`multi-agent-debate`](skills/multi-agent-debate/SKILL.md) | refinement + hardening | thread review rounds (no status flip) *and* leaf `decided\|specified ↔ hardening` |
 | 10 | [`materialize-context`](skills/materialize-context/SKILL.md) | cross-cutting | read-only; resolves `soft_links` URIs and budgets content |
 | 11 | [`verify-tree`](skills/verify-tree/SKILL.md) | cross-cutting | read-only validator + `--rebuild-index` regenerator for the two aggregate index files |
-| 12 | [`discover-threads`](skills/discover-threads/SKILL.md) | cross-cutting | read-only; filter/query the thread fleet by status, assignment, owner, domain, maturity, modified date, review requirement, PR presence, unpark trigger |
+| 12 | [`list-threads`](skills/list-threads/SKILL.md) | cross-cutting | read-only; filter/query the thread fleet by status, assignment, owner, domain, maturity, modified date, review requirement, PR presence, unpark trigger |
 | 13 | [`assign-thread`](skills/assign-thread/SKILL.md) | refinement | mutates thread `assigned_to` (add / remove / set / clear) with append-only audit trail in the thread body |
 | 14 | [`review-parked-threads`](skills/review-parked-threads/SKILL.md) | triage | read-only; surfaces parked threads that are actionable (trigger set), stale (parked beyond `--stale-days`), or missing a trigger |
 
@@ -249,7 +249,7 @@ A typical flow from "I was thinking about X" to a merged decision with a hardeni
 8. **Harden (optional, leaf scope).** For high-stakes leaves, `multi-agent-debate --scope=leaf` opens a round that flips the leaf through `hardening` and back. Multiple rounds are normal. The transient `pre_hardening_status` field on the leaf tracks the entry state so close can restore without re-inferring. `proposed-patches.md` is landed by the user in a separate commit before close.
 9. **Spec and build (deferred).** `derive-impl-spec` writes an `impl-spec.md` with the CONVENTIONS § 8 skeleton and flips the leaf to `specified` once the spec is `ready`. `ai-build` runs the code-side PR flow and flips the leaf through `building → built`. Both are tracked in CONVENTIONS as first-class lifecycle owners and will slot in without schema churn.
 
-As the pack fills with threads, three cross-cutting skills help you navigate: `discover-threads` answers "what's going on right now", `review-parked-threads` surfaces parked work that needs attention, and `assign-thread` lets you hand threads off. None of these change the lifecycle — they are views and handoffs over it.
+As the pack fills with threads, three cross-cutting skills help you navigate: `list-threads` answers "what's going on right now", `review-parked-threads` surfaces parked work that needs attention, and `assign-thread` lets you hand threads off. None of these change the lifecycle — they are views and handoffs over it.
 
 At any point, `materialize-context` is the right tool to resolve `soft_links` with role-based budgeting, and `verify-tree` is the right tool to confirm the whole structure is coherent. All nine operational write skills (every writer except `init-project-brain`, which is a one-time, idempotent setup skill akin to `mkdir`) support `--dry-run`, which runs all preconditions, prints the complete execution plan, and exits with status 0/1/2 without writing anything to disk or invoking git mutations. See any individual SKILL.md's "Dry-run semantics" section for details.
 
@@ -324,19 +324,19 @@ The transient `pre_hardening_status` field on a leaf tracks which state hardenin
 
 ### Optional fields: assignment and review tracking
 
-Threads support two optional frontmatter fields: `assigned_to` (a free-form list of assignee names or IDs) and `review_requirement` (a free-form string describing the review gate). These fields are recorded by `assign-thread` and visible in `discover-threads` filters, but neither is enforced by the pack — teams wire enforcement externally via CODEOWNERS, branch protection, or bot automation.
+Threads support two optional frontmatter fields: `assigned_to` (a free-form list of assignee names or IDs) and `review_requirement` (a free-form string describing the review gate). These fields are recorded by `assign-thread` and visible in `list-threads` filters, but neither is enforced by the pack — teams wire enforcement externally via CODEOWNERS, branch protection, or bot automation.
 
 ---
 
 ## Cross-cutting: context, validation, and fleet queries
 
-Five skills are invokable from anywhere and own no per-artifact lifecycle state: `materialize-context`, `verify-tree`, `discover-threads`, `review-parked-threads`, and (the one write skill in the group) `assign-thread`.
+Five skills are invokable from anywhere and own no per-artifact lifecycle state: `materialize-context`, `verify-tree`, `list-threads`, `review-parked-threads`, and (the one write skill in the group) `assign-thread`.
 
 **`materialize-context`** walks an artifact's `soft_links`, resolves each URI by scheme, applies a role-driven budget (`spec` and `prior-decision` get full text for reviewers and authors; `related-work` gets head summaries; `scratch` and `external-reference` get title-only in tight budgets), and emits a single `context.md` plus a `context.json` sidecar. Three modes: `materialize` (default), `detect-stale` (walks refs without fetching bodies, reports rot), `dry-run` (prints the resolution plan). Output is ephemeral by default under `$XDG_CACHE_HOME/project-brain/materialize-context/`; `--persist` writes into `<artifact-dir>/.context/<timestamp>/` for audit snapshots (gitignore `.context/` by default). Soft-fails on per-URI failures.
 
 **`verify-tree`** treats twenty-one invariants from CONVENTIONS § 9 as errors (V-01 through V-21). Four naming rules (N-01 through N-04) cover slug style (warning), reserved filenames, reserved directory names, and sequential debate rounds. Flags: `--staging=<slug>`, `--thread=<slug>`, `--path=<path>`, `--format=json`, `--warnings-as-errors`, and `--rebuild-index` (regenerates `thread-index.md` and `current-state.md` deterministically from per-thread frontmatter — the only generator, invoked as the final step by every mutating skill). Exit codes `0` / `1` / `2`. Projects extend the invariant set by dropping `.py` files under `scripts/verify-tree.d/` with the `X-ORG-` prefix.
 
-**`discover-threads`** is a read-only filter over thread frontmatter. AND-style conjunction of `--status`, `--assigned`, `--owner`, `--maturity`, `--domain`, `--modified-before`, `--modified-after`, `--review-requirement`, `--has-pr`, `--unpark-trigger-set`; output in `table` (default), `json`, `csv`, `yaml`, or `paths` form. Ideal for "what's assigned to me?", "what's parked and ready to resume?", or "which threads target a specific `<your-domain>/` subtree?" without opening each thread by hand.
+**`list-threads`** is a read-only filter over thread frontmatter. AND-style conjunction of `--status`, `--assigned`, `--owner`, `--maturity`, `--domain`, `--modified-before`, `--modified-after`, `--review-requirement`, `--has-pr`, `--unpark-trigger-set`; output in `table` (default), `json`, `csv`, `yaml`, or `paths` form. Ideal for "what's assigned to me?", "what's parked and ready to resume?", or "which threads target a specific `<your-domain>/` subtree?" without opening each thread by hand.
 
 **`review-parked-threads`** is the triage view over the parked subset. Partitions the parked fleet into three buckets — **actionable** (`unpark_trigger` populated), **stale** (parked beyond `--stale-days`, default 90), **no-trigger hygiene** (parked without a trigger) — and emits a `markdown-report` by default. Pure read; recommends `park-thread --unpark`, `discard-thread`, or `update-thread` as follow-ups without invoking them.
 
@@ -439,7 +439,7 @@ Skills version independently. The v0.9.0 cut landed in four stages:
 
 - **Stage 1** (safety & correctness hardening): path-traversal guards on `multi-agent-debate` and `materialize-context`, envelope wrapping for persona charters, charter linter, secret-pattern scans on promotion, concurrent-finalize guard. Affected skills bumped to 0.2.0 or 0.3.0 with invariants V-12..V-21 added to `verify-tree`.
 - **Stage 2** (shared-index refactor): `verify-tree` → 0.3.0 with `--rebuild-index` as the only index regenerator. All seven mutating skills wired in to invoke it. Optional `assigned_to` and `review_requirement` thread fields added to the schema.
-- **Stage 3** (triage and query layer): three new read-only query/triage skills — `discover-threads`, `assign-thread`, `review-parked-threads`, all at 0.1.0 — which exercise the Stage 2 fields.
+- **Stage 3** (triage and query layer): three new read-only query/triage skills — `list-threads`, `assign-thread`, `review-parked-threads`, all at 0.1.0 — which exercise the Stage 2 fields.
 - **Stage 4** (audit-log stub, documentation, consistency): `AUDIT-LOG.md` spec, `QUICKSTART.md`, `RUNTIME.md`, `SECURITY.md`, `CONTRIBUTING.md`, housekeeping files (`LICENSE`, `CODEOWNERS`, `.gitignore`, `.github/workflows/verify-brain.yml`), flag-consistency pass across the 14 skills (normalize `--json` to `--format=json`, add TODOs for `--brain=<path>` documentation), `--dry-run` parity on the 9 write skills with uniform contract.
 
 Pack-level "done enough to be useful" means the pipeline from `new-thread` through `finalize-promotion` with optional hardening loop is fully drafted and internally consistent, plus the Stage 3 triage and assignment layer is in place for teams that need it. `derive-impl-spec` and `ai-build` are deferred to subsequent releases.
