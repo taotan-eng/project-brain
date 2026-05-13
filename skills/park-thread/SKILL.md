@@ -35,7 +35,7 @@ Unparking is the symmetric reverse: clear the park metadata, restore `status: ac
 | `--brain=<path>`  | user prompt or cwd inference    | no       | Absolute path to the brain root. Defaults to the nearest ancestor `project-brain/` directory.        |
 | `--dry-run`       | boolean                         | no       | Print the plan (status flip, park metadata, commit message) without performing any file writes, git mutations, or audit-log writes. See Process § Dry-run semantics. |
 
-Prompt strategy: resolve `thread_slug` from cwd. Infer `mode` from current status; if ambiguous (e.g. skill invoked without context), ask via `AskUserQuestion`. For `park`, always prompt for `reason` even if the user supplied an inline reason in their original message — parked threads are often re-read weeks later and a one-word reason is rarely enough.
+Prompt strategy: resolve `thread_slug` from cwd. Infer `mode` from current status; if ambiguous (e.g. skill invoked without context), ask the user to pick park-vs-unpark. For `park`, always prompt for `reason` even if the user supplied an inline reason in their original message — parked threads are often re-read weeks later and a one-word reason is rarely enough.
 
 ## Preconditions
 

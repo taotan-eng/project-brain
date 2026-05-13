@@ -39,7 +39,7 @@ The workhorse for pre-promotion thread maintenance. Between `new-thread` and `pr
 | `--brain=<path>`  | user prompt or cwd inference    | no       | Absolute path to the brain root. Defaults to the nearest ancestor `project-brain/` directory.        |
 | `--dry-run`       | boolean                         | no       | Print the plan (operation, file changes, commit message) without performing any file writes, git mutations, or audit-log writes. See Process § Dry-run semantics. |
 
-Prompt strategy: always resolve `thread_slug` from cwd first. Ask `operation` via `AskUserQuestion` with the six options above. Branch on the answer to collect operation-specific inputs. `commit-pending` takes no extra args — it simply stages and commits whatever is already dirty in the thread directory.
+Prompt strategy: always resolve `thread_slug` from cwd first. Ask the user to pick `operation` from the six options above. Branch on the answer to collect operation-specific inputs. `commit-pending` takes no extra args — it simply stages and commits whatever is already dirty in the thread directory.
 
 ## Preconditions
 
@@ -68,7 +68,7 @@ The skill **refuses** if any of these are not met.
 > - "Merge this into the Y thread" → `--operation=merge-into --merge-into-slug=y`
 > - "Prep this for promotion" → `--operation=promote-prep`
 >
-> Only use `AskUserQuestion` if the user's wording is truly ambiguous.
+> Only prompt the user if the user's wording is truly ambiguous.
 
 **One call:**
 

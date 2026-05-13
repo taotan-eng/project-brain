@@ -35,7 +35,7 @@ This is the "grow the thread" skill. `new-thread` creates the container; `record
 | `by`                    | `--by <email>` flag                    | no       | Actor email. Default: `TODO@example.com` placeholder with a replace-when-ready hint printed by the script. |
 | `--brain=<path>`        | cwd inference                          | no       | Absolute path to the brain. Defaults to the nearest ancestor containing `CONVENTIONS.md`. |
 
-Prompt strategy: ask for `title` and body source in one `AskUserQuestion` call if not already obvious from the conversation. Infer `slug` from cwd (the thread dir the user is working in); fall back to asking only if ambiguous. Infer `artifact_kind` from context — e.g., if the user just said "log the debate result", pass `--artifact-kind=debate` without prompting.
+Prompt strategy: ask the user for `title` and body source in one prompt if not already obvious from the conversation. Infer `slug` from cwd (the thread dir the user is working in); fall back to asking only if ambiguous. Infer `artifact_kind` from context — e.g., if the user just said "log the debate result", pass `--artifact-kind=debate` without prompting.
 
 ## Preconditions
 
@@ -57,7 +57,7 @@ The script routes markdown inputs to `artifacts/` (frontmatter is injected, V-06
 > - `--title` from the user's own framing ("log the debate result" + the content → "JWT vs session rationale")
 > - `--artifact-kind` from language: "debate result" → `debate`, "benchmark output" → `benchmark`, "analysis" → `analysis`. Default `artifact` if nothing obvious.
 >
-> Only use `AskUserQuestion` if slug OR title genuinely can't be inferred.
+> Only prompt the user if slug OR title genuinely can't be inferred.
 
 **Default mode** (new separate file):
 

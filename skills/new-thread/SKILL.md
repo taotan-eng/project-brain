@@ -36,7 +36,7 @@ The skill is deliberately minimal. It does not pre-create optional artifacts (`p
 | `--brain=<path>`     | user prompt or cwd inference        | no       | Absolute path to the brain root. Defaults to the nearest ancestor `project-brain/` directory containing `CONVENTIONS.md`. Use this flag when cwd is outside the brain. |
 | `--dry-run`          | boolean                             | no       | Print the plan (new frontmatter, files to create, commit message) without performing any file writes, git mutations, or audit-log writes. See Process § Dry-run semantics. |
 
-Prompt strategy: ask for `slug` + `title` + `purpose` in one `AskUserQuestion` call with preview-equivalent text. Resolve `owner` from `--owner <email>` if supplied; otherwise write the literal placeholder `TODO@example.com` and append a TODO marker to the thread body reminding the user to replace it. **Do NOT run `git config user.email`, do NOT read `$EMAIL`, do NOT run any shell command** — every shell call triggers a permission prompt in agentic IDEs, and rc4's pre-promote flow is "capture → refine → Done, no prompts". Ask for `primary_project` separately (with options from `<brain>/config.yaml` aliases). `tree_domain` and `related_projects` are asked only if the user volunteers or the previous conversation makes them obvious.
+Prompt strategy: ask the user for `slug` + `title` + `purpose` in one prompt with preview-equivalent text. Resolve `owner` from `--owner <email>` if supplied; otherwise write the literal placeholder `TODO@example.com` and append a TODO marker to the thread body reminding the user to replace it. **Do NOT run `git config user.email`, do NOT read `$EMAIL`, do NOT run any shell command** — every shell call triggers a permission prompt in agentic IDEs, and rc4's pre-promote flow is "capture → refine → Done, no prompts". Ask for `primary_project` separately (with options from `<brain>/config.yaml` aliases). `tree_domain` and `related_projects` are asked only if the user volunteers or the previous conversation makes them obvious.
 
 ## Preconditions
 
@@ -54,7 +54,7 @@ The skill **refuses** if any of these are not met. It does not silently fix.
 >
 > **Call `${PROJECT_BRAIN_PACK_ROOT}/scripts/new-thread.sh` ONCE.** No `Read` of `config.yaml`, no `Read` of templates, no `Write` / `Edit` / `mkdir`. The script reads config.yaml itself, validates the slug, scaffolds, and rebuilds indexes. Every pre-script tool call adds 30–60s of Cowork overhead; skip them.
 >
-> **DERIVE `slug`, `title`, `purpose` from the user's own message before asking.** "Start a thread about authentication" → `slug=authentication`, `title="Authentication"`, `purpose="thread for authentication"`. Only use `AskUserQuestion` if slug/title are genuinely ambiguous (e.g., the user said "new thread" with no topic).
+> **DERIVE `slug`, `title`, `purpose` from the user's own message before asking.** "Start a thread about authentication" → `slug=authentication`, `title="Authentication"`, `purpose="thread for authentication"`. Only prompt the user if slug/title are genuinely ambiguous (e.g., the user said "new thread" with no topic).
 >
 > Strip `${PROJECT_BRAIN_PACK_ROOT}` and the bare `scripts/new-thread.sh` resolves against the skill's own dir → "no such file". Keep it.
 

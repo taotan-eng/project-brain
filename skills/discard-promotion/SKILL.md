@@ -32,7 +32,7 @@ Unlike `finalize-promotion`, there are no leaves on main to flip — leaves only
 | `delete_branch`   | user prompt                     | no       | Whether to delete the promote branch on the remote after discarding. Default preview: `yes` if the branch is safely behind main, else `no`. |
 | `--brain=<path>`  | user prompt or cwd inference    | no       | Absolute path to the brain root. Defaults to the nearest ancestor `project-brain/` directory.        |
 
-Prompt strategy: infer `thread_slug` from cwd; infer `pr_url` from `tree_prs[last]` when there's one unfinalized. Ask `delete_branch` via a single `AskUserQuestion` with two options ("Delete the remote promote branch" / "Keep the branch — I'll reuse it").
+Prompt strategy: infer `thread_slug` from cwd; infer `pr_url` from `tree_prs[last]` when there's one unfinalized. Ask the user to pick `delete_branch` between two options ("Delete the remote promote branch" / "Keep the branch — I'll reuse it").
 
 | `--dry-run`       | boolean                         | no       | Print the plan (thread status revert, commit message) without performing any file writes, git mutations, or audit-log writes. See Process § Dry-run semantics. |
 
@@ -53,7 +53,7 @@ The skill **refuses** if any of these are not met.
 Each step is atomic. Failure at step N leaves main in whatever state it was after step N-1.
 
 1. **Resolve inputs.** Infer `thread_slug` from cwd. Resolve `pr_url` from `tree_prs` unfinalized entries. Query `gh pr view` for state metadata.
-2. **Validate preconditions.** Run checks 1–7. On any failure, stop and report the specific precondition. If `gh pr view` returns OPEN, prompt the user via one `AskUserQuestion`: "PR is currently OPEN. Close it now and revert the thread to active? (Any review comments will be retained on the closed PR for reference, but the thread becomes locally editable.)" Default Yes.
+2. **Validate preconditions.** Run checks 1–7. On any failure, stop and report the specific precondition. If `gh pr view` returns OPEN, ask the user to confirm: "PR is currently OPEN. Close it now and revert the thread to active? (Any review comments will be retained on the closed PR for reference, but the thread becomes locally editable.)" Default Yes.
 2a. **(OPEN-only) Close the PR.** Run `gh pr close [pr_url] --delete-branch=[delete_branch]`. The PR transitions OPEN → CLOSED with `mergedAt: null`. From here the flow merges with the rejected-PR path.
 3. **Flip thread frontmatter (commit 1 of 1).** In `project-brain/threads/[thread_slug]/thread.md`:
     - `status: in-review → active`

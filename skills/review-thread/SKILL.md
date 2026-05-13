@@ -31,7 +31,7 @@ This is the counterpart to `record-artifact`. Where `record-artifact` grows the 
 | `--since=<ts>`   | flag                    | no       | Show transcript entries at or after this ISO8601 timestamp. Combined with `--last` as an upper bound. |
 | `--brain=<path>` | cwd inference           | no       | Absolute path to brain. Defaults to nearest ancestor containing `CONVENTIONS.md`. |
 
-Prompt strategy: infer `slug` from cwd. Ask via `AskUserQuestion` only if the cwd is outside any thread dir and the user didn't name one.
+Prompt strategy: infer `slug` from cwd. Ask the user only if the cwd is outside any thread dir and the user didn't name one.
 
 ## Preconditions
 
