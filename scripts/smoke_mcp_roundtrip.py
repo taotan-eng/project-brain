@@ -381,6 +381,17 @@ async def _run() -> int:
                     assert code == "script_error", \
                         f"materialize_context returned wrong error code: {materialize_payload!r}"
 
+                # 10e. ENV-DEFAULT brain — omit brain entirely; the server's
+                # PROJECT_BRAIN_HOME env var (set on the subprocess at launch)
+                # must be honored by every everyday tool. This verifies the
+                # day-5 hotfix that fixed the UX gap where tools always asked
+                # the user for the brain path even when the config provided it.
+                env_default_resp = await session.call_tool(
+                    "list_threads",
+                    arguments={"status": "active"},  # NO brain arg
+                )
+                _assert_ok(env_default_resp, "list_threads env-default brain")
+
                 # 11. ERROR path — empty slug -> validation_error
                 bad_slug_resp = await session.call_tool(
                     "new_thread",
@@ -415,6 +426,28 @@ async def _run() -> int:
                 )
                 assert "Smoke conventions" in conv_text, \
                     f"CONVENTIONS resource content unexpected: {conv_text[:200]}"
+
+                # 14b. ENV-MISSING negative — when no brain arg AND no env var,
+                # everyday tools must return validation_error with a hint
+                # mentioning PROJECT_BRAIN_HOME. Tested in-process against the
+                # tools module (rather than via the subprocess MCP session)
+                # because we'd need a second server-launch with no env to test
+                # via call_tool, and the failure mode is at the impl boundary.
+                from project_brain_mcp.tools import ListThreadsArgs, list_threads_impl
+                saved_env = os.environ.pop("PROJECT_BRAIN_HOME", None)
+                try:
+                    no_env_resp = await list_threads_impl(ListThreadsArgs())
+                    assert no_env_resp["ok"] is False, \
+                        f"expected validation_error when no brain/env, got {no_env_resp!r}"
+                    assert no_env_resp["error"]["code"] == "validation_error", \
+                        f"expected validation_error code, got {no_env_resp['error']!r}"
+                    hint = no_env_resp["error"].get("hint") or ""
+                    msg = no_env_resp["error"].get("message") or ""
+                    assert "PROJECT_BRAIN_HOME" in hint or "PROJECT_BRAIN_HOME" in msg, \
+                        f"hint should mention PROJECT_BRAIN_HOME env var: hint={hint!r} msg={msg!r}"
+                finally:
+                    if saved_env is not None:
+                        os.environ["PROJECT_BRAIN_HOME"] = saved_env
 
                 # 15. Final consistency check — verify_tree clean
                 verify_resp = await session.call_tool(

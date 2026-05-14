@@ -67,11 +67,11 @@ _run_skill = wrap_validation(RunSkillArgs, run_skill_impl)
 
 @app.tool(name="new_thread", description="Scaffold a new thread under <brain>/threads/<slug>/ with template files.")
 async def new_thread(
-    brain: str,
     slug: str,
     title: str,
     purpose: str,
     primary_project: str,
+    brain: str | None = None,
     owner: str | None = None,
 ) -> dict[str, Any]:
     return await _new_thread(
@@ -82,13 +82,13 @@ async def new_thread(
 
 @app.tool(name="list_threads", description="Read-only thread query against per-thread frontmatter.")
 async def list_threads(
-    brain: str, status: str | None = None, domain: str | None = None,
+    brain: str | None = None, status: str | None = None, domain: str | None = None,
 ) -> dict[str, Any]:
     return await _list_threads(brain=brain, status=status, domain=domain)
 
 
 @app.tool(name="verify_tree", description="Validate the brain (V-01..V-22) or rebuild aggregate indexes.")
-async def verify_tree(brain: str, rebuild_index: bool = False) -> dict[str, Any]:
+async def verify_tree(brain: str | None = None, rebuild_index: bool = False) -> dict[str, Any]:
     return await _verify_tree(brain=brain, rebuild_index=rebuild_index)
 
 
@@ -115,9 +115,9 @@ _discard_promotion = wrap_validation(DiscardPromotionArgs, discard_promotion_imp
 
 @app.tool(name="update_thread", description="Apply a structured update to an active or parked thread.")
 async def update_thread(
-    brain: str,
     slug: str,
     operation: str,
+    brain: str | None = None,
     target: str | None = None,
     merge_into_slug: str | None = None,
     url: str | None = None,
@@ -134,9 +134,9 @@ async def update_thread(
 
 @app.tool(name="record_artifact", description="Capture an artifact (markdown, attachment, or transcript append) into a thread.")
 async def record_artifact(
-    brain: str,
     slug: str,
     title: str,
+    brain: str | None = None,
     content: str | None = None,
     file: str | None = None,
     artifact_kind: str | None = None,
@@ -151,8 +151,8 @@ async def record_artifact(
 
 @app.tool(name="assign_thread", description="Manage the assigned_to list on a thread (add/remove/set/clear).")
 async def assign_thread(
-    brain: str,
     slug: str,
+    brain: str | None = None,
     add: str | None = None,
     remove: str | None = None,
     set_: str | None = None,
@@ -168,8 +168,8 @@ async def assign_thread(
 
 @app.tool(name="park_thread", description="Park (pause) or unpark a thread.")
 async def park_thread(
-    brain: str,
     slug: str,
+    brain: str | None = None,
     reason: str | None = None,
     unpark: bool = False,
     trigger: str | None = None,
@@ -183,15 +183,15 @@ async def park_thread(
 
 @app.tool(name="discard_thread", description="Archive an active or parked thread that was never promoted.")
 async def discard_thread(
-    brain: str, slug: str, reason: str, by: str | None = None,
+    slug: str, reason: str, brain: str | None = None, by: str | None = None,
 ) -> dict[str, Any]:
     return await _discard_thread(brain=brain, slug=slug, reason=reason, by=by)
 
 
 @app.tool(name="restore_thread", description="Restore a discarded thread from archive/ back to threads/.")
 async def restore_thread(
-    brain: str,
     slug: str,
+    brain: str | None = None,
     maturity: str | None = None,
     reason: str | None = None,
     by: str | None = None,
@@ -203,8 +203,8 @@ async def restore_thread(
 
 @app.tool(name="review_thread", description="Print a read-only summary of a thread (status, leaves, transcript).")
 async def review_thread(
-    brain: str,
     slug: str,
+    brain: str | None = None,
     full: bool = False,
     last: int | None = None,
     since: str | None = None,
@@ -215,18 +215,18 @@ async def review_thread(
 
 
 @app.tool(name="review_parked_threads", description="Audit parked threads — surface actionable, stale, and hygiene-warning ones.")
-async def review_parked_threads(brain: str, stale_days: int | None = None) -> dict[str, Any]:
+async def review_parked_threads(brain: str | None = None, stale_days: int | None = None) -> dict[str, Any]:
     return await _review_parked_threads(brain=brain, stale_days=stale_days)
 
 
 @app.tool(name="finalize_promotion", description="Close out a merged promote PR — flip leaves to decided, archive thread if last wave.")
-async def finalize_promotion(brain: str, slug: str) -> dict[str, Any]:
+async def finalize_promotion(slug: str, brain: str | None = None) -> dict[str, Any]:
     return await _finalize_promotion(brain=brain, slug=slug)
 
 
 @app.tool(name="discard_promotion", description="Close out a promote PR that was closed without merging.")
 async def discard_promotion(
-    brain: str, slug: str, pr_status: str | None = None,
+    slug: str, brain: str | None = None, pr_status: str | None = None,
 ) -> dict[str, Any]:
     return await _discard_promotion(brain=brain, slug=slug, pr_status=pr_status)
 
@@ -273,9 +273,9 @@ async def init_project_brain(
     ),
 )
 async def promote_thread_to_tree(
-    brain: str,
     slug: str,
     allow_domain: str,
+    brain: str | None = None,
     leaves: list[str] | None = None,
     mode: str = "local",
     archive_thread: bool = False,
@@ -298,8 +298,8 @@ async def promote_thread_to_tree(
     ),
 )
 async def materialize_context(
-    brain: str,
     artifact: str,
+    brain: str | None = None,
     consumer: str = "reviewer",
     roles: list[str] | None = None,
     persist: bool = False,

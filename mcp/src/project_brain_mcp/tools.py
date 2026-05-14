@@ -11,7 +11,19 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from ._response import err, from_subprocess_result, ok
-from ._subprocess import find_pack_root, run_script
+from ._subprocess import find_pack_root, resolve_brain, run_script
+
+
+_BRAIN_FIELD_DESC = "Brain path. Defaults to $PROJECT_BRAIN_HOME if set."
+_BRAIN_RESOLVE_HINT = "set PROJECT_BRAIN_HOME in your MCP config's env block, or pass brain=<path>"
+
+
+def _resolve_brain_or_err(arg: str | None) -> tuple[str | None, dict[str, Any] | None]:
+    """Resolve brain; if missing, return a structured validation_error to short-circuit."""
+    brain, err_msg = resolve_brain(arg)
+    if err_msg:
+        return None, err("validation_error", err_msg, hint=_BRAIN_RESOLVE_HINT)
+    return brain, None
 
 
 # ---------------------------------------------------------------------------
@@ -22,7 +34,7 @@ from ._subprocess import find_pack_root, run_script
 class NewThreadArgs(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    brain: str = Field(min_length=1, description="Absolute path to the brain root")
+    brain: str | None = Field(default=None, description=_BRAIN_FIELD_DESC)
     slug: str = Field(min_length=1, description="Kebab-case thread slug, e.g. 'auth-refactor'")
     title: str = Field(min_length=1, description="Human-readable title")
     purpose: str = Field(min_length=1, description="One-line purpose of the thread")
@@ -33,7 +45,7 @@ class NewThreadArgs(BaseModel):
 class ListThreadsArgs(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    brain: str = Field(min_length=1)
+    brain: str | None = Field(default=None, description=_BRAIN_FIELD_DESC)
     status: str | None = Field(default=None, description="active | parked | archived | in-review")
     domain: str | None = Field(default=None)
 
@@ -41,7 +53,7 @@ class ListThreadsArgs(BaseModel):
 class VerifyTreeArgs(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    brain: str = Field(min_length=1)
+    brain: str | None = Field(default=None, description=_BRAIN_FIELD_DESC)
     rebuild_index: bool = Field(default=False)
 
 
@@ -52,8 +64,11 @@ class RunSkillArgs(BaseModel):
 
 
 async def new_thread_impl(args: NewThreadArgs) -> dict[str, Any]:
+    brain, err_resp = _resolve_brain_or_err(args.brain)
+    if err_resp:
+        return err_resp
     argv = [
-        f"--brain={args.brain}",
+        f"--brain={brain}",
         f"--slug={args.slug}",
         f"--title={args.title}",
         f"--purpose={args.purpose}",
@@ -65,7 +80,10 @@ async def new_thread_impl(args: NewThreadArgs) -> dict[str, Any]:
 
 
 async def list_threads_impl(args: ListThreadsArgs) -> dict[str, Any]:
-    argv = [f"--brain={args.brain}"]
+    brain, err_resp = _resolve_brain_or_err(args.brain)
+    if err_resp:
+        return err_resp
+    argv = [f"--brain={brain}"]
     if args.status:
         argv.append(f"--status={args.status}")
     if args.domain:
@@ -74,7 +92,10 @@ async def list_threads_impl(args: ListThreadsArgs) -> dict[str, Any]:
 
 
 async def verify_tree_impl(args: VerifyTreeArgs) -> dict[str, Any]:
-    argv = [f"--brain={args.brain}"]
+    brain, err_resp = _resolve_brain_or_err(args.brain)
+    if err_resp:
+        return err_resp
+    argv = [f"--brain={brain}"]
     if args.rebuild_index:
         argv.append("--rebuild-index")
     return from_subprocess_result(run_script("verify-tree.py", argv))
@@ -116,7 +137,7 @@ async def run_skill_impl(args: RunSkillArgs) -> dict[str, Any]:
 class UpdateThreadArgs(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    brain: str = Field(min_length=1)
+    brain: str | None = Field(default=None, description=_BRAIN_FIELD_DESC)
     slug: str = Field(min_length=1)
     operation: str = Field(
         min_length=1,
@@ -133,7 +154,7 @@ class UpdateThreadArgs(BaseModel):
 class RecordArtifactArgs(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    brain: str = Field(min_length=1)
+    brain: str | None = Field(default=None, description=_BRAIN_FIELD_DESC)
     slug: str = Field(min_length=1)
     title: str = Field(min_length=1)
     content: str | None = Field(default=None, description="Inline body content")
@@ -146,7 +167,7 @@ class RecordArtifactArgs(BaseModel):
 class AssignThreadArgs(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    brain: str = Field(min_length=1)
+    brain: str | None = Field(default=None, description=_BRAIN_FIELD_DESC)
     slug: str = Field(min_length=1)
     # Exactly one of add/remove/set_/clear should be supplied. Pydantic
     # enforces presence-of-one via the operation field's discriminator
@@ -162,7 +183,7 @@ class AssignThreadArgs(BaseModel):
 class ParkThreadArgs(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    brain: str = Field(min_length=1)
+    brain: str | None = Field(default=None, description=_BRAIN_FIELD_DESC)
     slug: str = Field(min_length=1)
     reason: str | None = Field(default=None, description="Required for park; ignored for unpark")
     unpark: bool = Field(default=False, description="Flip parked -> active")
@@ -173,7 +194,7 @@ class ParkThreadArgs(BaseModel):
 class DiscardThreadArgs(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    brain: str = Field(min_length=1)
+    brain: str | None = Field(default=None, description=_BRAIN_FIELD_DESC)
     slug: str = Field(min_length=1)
     reason: str = Field(min_length=1, description="Why the thread is being discarded")
     by: str | None = Field(default=None)
@@ -182,7 +203,7 @@ class DiscardThreadArgs(BaseModel):
 class RestoreThreadArgs(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    brain: str = Field(min_length=1)
+    brain: str | None = Field(default=None, description=_BRAIN_FIELD_DESC)
     slug: str = Field(min_length=1)
     maturity: str | None = Field(default=None, description="Maturity to restore to (default: refining)")
     reason: str | None = Field(default=None)
@@ -192,7 +213,7 @@ class RestoreThreadArgs(BaseModel):
 class ReviewThreadArgs(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    brain: str = Field(min_length=1)
+    brain: str | None = Field(default=None, description=_BRAIN_FIELD_DESC)
     slug: str = Field(min_length=1)
     full: bool = Field(default=False, description="Append the full transcript")
     last: int | None = Field(default=None, description="Show the last N transcript entries")
@@ -202,27 +223,30 @@ class ReviewThreadArgs(BaseModel):
 class ReviewParkedThreadsArgs(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    brain: str = Field(min_length=1)
+    brain: str | None = Field(default=None, description=_BRAIN_FIELD_DESC)
     stale_days: int | None = Field(default=None)
 
 
 class FinalizePromotionArgs(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    brain: str = Field(min_length=1)
+    brain: str | None = Field(default=None, description=_BRAIN_FIELD_DESC)
     slug: str = Field(min_length=1)
 
 
 class DiscardPromotionArgs(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    brain: str = Field(min_length=1)
+    brain: str | None = Field(default=None, description=_BRAIN_FIELD_DESC)
     slug: str = Field(min_length=1)
     pr_status: str | None = Field(default=None)
 
 
 async def update_thread_impl(args: UpdateThreadArgs) -> dict[str, Any]:
-    argv = [f"--brain={args.brain}", f"--slug={args.slug}", f"--operation={args.operation}"]
+    brain, err_resp = _resolve_brain_or_err(args.brain)
+    if err_resp:
+        return err_resp
+    argv = [f"--brain={brain}", f"--slug={args.slug}", f"--operation={args.operation}"]
     if args.target:
         argv.append(f"--target={args.target}")
     if args.merge_into_slug:
@@ -239,7 +263,10 @@ async def update_thread_impl(args: UpdateThreadArgs) -> dict[str, Any]:
 
 
 async def record_artifact_impl(args: RecordArtifactArgs) -> dict[str, Any]:
-    argv = [f"--brain={args.brain}", f"--slug={args.slug}", f"--title={args.title}"]
+    brain, err_resp = _resolve_brain_or_err(args.brain)
+    if err_resp:
+        return err_resp
+    argv = [f"--brain={brain}", f"--slug={args.slug}", f"--title={args.title}"]
     if args.content is not None:
         argv.append(f"--content={args.content}")
     if args.file:
@@ -254,7 +281,10 @@ async def record_artifact_impl(args: RecordArtifactArgs) -> dict[str, Any]:
 
 
 async def assign_thread_impl(args: AssignThreadArgs) -> dict[str, Any]:
-    argv = [f"--brain={args.brain}", f"--slug={args.slug}"]
+    brain, err_resp = _resolve_brain_or_err(args.brain)
+    if err_resp:
+        return err_resp
+    argv = [f"--brain={brain}", f"--slug={args.slug}"]
     if args.add:
         argv.append(f"--add={args.add}")
     if args.remove:
@@ -271,7 +301,10 @@ async def assign_thread_impl(args: AssignThreadArgs) -> dict[str, Any]:
 
 
 async def park_thread_impl(args: ParkThreadArgs) -> dict[str, Any]:
-    argv = [f"--brain={args.brain}", f"--slug={args.slug}"]
+    brain, err_resp = _resolve_brain_or_err(args.brain)
+    if err_resp:
+        return err_resp
+    argv = [f"--brain={brain}", f"--slug={args.slug}"]
     if args.unpark:
         argv.append("--unpark")
     if args.reason:
@@ -284,14 +317,20 @@ async def park_thread_impl(args: ParkThreadArgs) -> dict[str, Any]:
 
 
 async def discard_thread_impl(args: DiscardThreadArgs) -> dict[str, Any]:
-    argv = [f"--brain={args.brain}", f"--slug={args.slug}", f"--reason={args.reason}"]
+    brain, err_resp = _resolve_brain_or_err(args.brain)
+    if err_resp:
+        return err_resp
+    argv = [f"--brain={brain}", f"--slug={args.slug}", f"--reason={args.reason}"]
     if args.by:
         argv.append(f"--by={args.by}")
     return from_subprocess_result(run_script("discard-thread.sh", argv))
 
 
 async def restore_thread_impl(args: RestoreThreadArgs) -> dict[str, Any]:
-    argv = [f"--brain={args.brain}", f"--slug={args.slug}"]
+    brain, err_resp = _resolve_brain_or_err(args.brain)
+    if err_resp:
+        return err_resp
+    argv = [f"--brain={brain}", f"--slug={args.slug}"]
     if args.maturity:
         argv.append(f"--maturity={args.maturity}")
     if args.reason:
@@ -302,7 +341,10 @@ async def restore_thread_impl(args: RestoreThreadArgs) -> dict[str, Any]:
 
 
 async def review_thread_impl(args: ReviewThreadArgs) -> dict[str, Any]:
-    argv = [f"--brain={args.brain}", f"--slug={args.slug}"]
+    brain, err_resp = _resolve_brain_or_err(args.brain)
+    if err_resp:
+        return err_resp
+    argv = [f"--brain={brain}", f"--slug={args.slug}"]
     if args.full:
         argv.append("--full")
     if args.last is not None:
@@ -314,19 +356,28 @@ async def review_thread_impl(args: ReviewThreadArgs) -> dict[str, Any]:
 
 async def review_parked_threads_impl(args: ReviewParkedThreadsArgs) -> dict[str, Any]:
     # Layer-1 script not yet implemented; helper returns script_error.
-    argv = [f"--brain={args.brain}"]
+    brain, err_resp = _resolve_brain_or_err(args.brain)
+    if err_resp:
+        return err_resp
+    argv = [f"--brain={brain}"]
     if args.stale_days is not None:
         argv.append(f"--stale-days={args.stale_days}")
     return from_subprocess_result(run_script("review-parked-threads.sh", argv))
 
 
 async def finalize_promotion_impl(args: FinalizePromotionArgs) -> dict[str, Any]:
-    argv = [f"--brain={args.brain}", f"--slug={args.slug}"]
+    brain, err_resp = _resolve_brain_or_err(args.brain)
+    if err_resp:
+        return err_resp
+    argv = [f"--brain={brain}", f"--slug={args.slug}"]
     return from_subprocess_result(run_script("finalize-promotion.sh", argv))
 
 
 async def discard_promotion_impl(args: DiscardPromotionArgs) -> dict[str, Any]:
-    argv = [f"--brain={args.brain}", f"--slug={args.slug}"]
+    brain, err_resp = _resolve_brain_or_err(args.brain)
+    if err_resp:
+        return err_resp
+    argv = [f"--brain={brain}", f"--slug={args.slug}"]
     if args.pr_status:
         argv.append(f"--pr-status={args.pr_status}")
     return from_subprocess_result(run_script("discard-promotion.sh", argv))
@@ -373,7 +424,7 @@ class InitProjectBrainArgs(BaseModel):
 class PromoteThreadToTreeArgs(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    brain: str = Field(min_length=1)
+    brain: str | None = Field(default=None, description=_BRAIN_FIELD_DESC)
     slug: str = Field(min_length=1)
     allow_domain: str = Field(
         min_length=1,
@@ -403,7 +454,7 @@ class PromoteThreadToTreeArgs(BaseModel):
 class MaterializeContextArgs(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    brain: str = Field(min_length=1)
+    brain: str | None = Field(default=None, description=_BRAIN_FIELD_DESC)
     artifact: str = Field(
         min_length=1,
         description="Path to the artifact relative to brain (thread, leaf, or NODE.md)",
@@ -453,8 +504,11 @@ async def promote_thread_to_tree_impl(args: PromoteThreadToTreeArgs) -> dict[str
             hint="for git:pr / git:branch / git:manual modes, use the promote-thread-to-tree prompt and orchestrate git directly in the calling agent",
         )
 
+    brain, err_resp = _resolve_brain_or_err(args.brain)
+    if err_resp:
+        return err_resp
     argv = [
-        f"--brain={args.brain}",
+        f"--brain={brain}",
         f"--slug={args.slug}",
         f"--allow-domain={args.allow_domain}",
     ]
@@ -473,8 +527,11 @@ async def materialize_context_impl(args: MaterializeContextArgs) -> dict[str, An
     # scripts/materialize-context.sh is not yet implemented; the wiring is
     # in place so a future Layer-1 commit can land the script without
     # touching Layer-2. Until then, calls return script_error "not found".
+    brain, err_resp = _resolve_brain_or_err(args.brain)
+    if err_resp:
+        return err_resp
     argv = [
-        f"--brain={args.brain}",
+        f"--brain={brain}",
         f"--artifact={args.artifact}",
         f"--consumer={args.consumer}",
         f"--roles={','.join(args.roles)}",

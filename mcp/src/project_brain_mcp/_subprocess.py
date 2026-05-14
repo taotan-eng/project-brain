@@ -14,6 +14,29 @@ from pathlib import Path
 from typing import Any
 
 
+def resolve_brain(arg: str | None) -> tuple[str | None, str | None]:
+    """Resolve the brain path from an arg or $PROJECT_BRAIN_HOME.
+
+    Returns `(brain_path, error_message)`. On success, `error_message` is
+    None and `brain_path` is the resolved string. On failure (neither
+    supplied), `brain_path` is None and `error_message` describes the gap.
+
+    Caller pattern in *_impl:
+
+        brain, err_msg = resolve_brain(args.brain)
+        if err_msg:
+            return err("validation_error", err_msg,
+                       hint="set PROJECT_BRAIN_HOME in your MCP config's env block, or pass brain=<path>")
+        # use `brain` (not args.brain) in argv-building
+    """
+    if arg and arg.strip():
+        return arg.strip(), None
+    env = os.environ.get("PROJECT_BRAIN_HOME", "").strip()
+    if env:
+        return env, None
+    return None, "brain not specified and PROJECT_BRAIN_HOME env var not set"
+
+
 def find_pack_root(start: Path | None = None) -> Path:
     """Resolve the project-brain pack root.
 
