@@ -11,19 +11,41 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from ._response import err, from_subprocess_result, ok
-from ._subprocess import find_pack_root, resolve_brain, run_script
+from ._subprocess import find_pack_root, resolve_brain_dir, resolve_project_root, run_script
 
 
-_BRAIN_FIELD_DESC = "Brain path. Defaults to $PROJECT_BRAIN_HOME if set."
-_BRAIN_RESOLVE_HINT = "set PROJECT_BRAIN_HOME in your MCP config's env block, or pass brain=<path>"
+_BRAIN_FIELD_DESC = (
+    "Project root path — the directory whose project-brain/ subdir holds the brain. "
+    "Defaults to $PROJECT_BRAIN_HOME if set. The brain itself lives at <root>/project-brain/."
+)
+_BRAIN_RESOLVE_HINT = (
+    "set PROJECT_BRAIN_HOME in your MCP config's env block (the project root, NOT the "
+    "brain dir itself), or pass brain=<root>"
+)
 
 
 def _resolve_brain_or_err(arg: str | None) -> tuple[str | None, dict[str, Any] | None]:
-    """Resolve brain; if missing, return a structured validation_error to short-circuit."""
-    brain, err_msg = resolve_brain(arg)
+    """Resolve the brain dir for non-init tools.
+
+    Returns `(brain_dir, None)` on success — brain_dir is `<root>/project-brain/`.
+    Returns `(None, err_resp)` on failure with a structured validation_error to
+    short-circuit the impl.
+    """
+    brain, err_msg = resolve_brain_dir(arg)
     if err_msg:
         return None, err("validation_error", err_msg, hint=_BRAIN_RESOLVE_HINT)
     return brain, None
+
+
+def _resolve_root_or_err(arg: str | None) -> tuple[str | None, dict[str, Any] | None]:
+    """Resolve the project root for init_project_brain.
+
+    Returns `(root_path, None)` on success. Returns `(None, err_resp)` on failure.
+    """
+    root, err_msg = resolve_project_root(arg)
+    if err_msg:
+        return None, err("validation_error", err_msg, hint=_BRAIN_RESOLVE_HINT)
+    return root, None
 
 
 # ---------------------------------------------------------------------------
@@ -397,19 +419,16 @@ from pathlib import Path as _Path
 class InitProjectBrainArgs(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    target: str = Field(
-        min_length=1,
-        description=(
-            "Absolute path to the directory where the brain should live "
-            "(i.e., where CONVENTIONS.md will land). The Layer-1 script "
-            "always creates a `project-brain/` subdirectory under the "
-            "target's parent, so passing `target=/path/foo/project-brain` "
-            "yields a brain at that exact location."
-        ),
-    )
     primary_project: str = Field(
         min_length=1,
         description="Alias for the new brain's primary project (kebab-case)",
+    )
+    target: str | None = Field(
+        default=None,
+        description=(
+            "Project root where the brain should be initialized. The brain lands at "
+            "<target>/project-brain/. Defaults to $PROJECT_BRAIN_HOME if set."
+        ),
     )
     owner: str | None = Field(
         default=None,
@@ -417,7 +436,7 @@ class InitProjectBrainArgs(BaseModel):
     )
     force: bool = Field(
         default=False,
-        description="If True, allow overwriting an existing brain at target (backed up to .bak.<timestamp>/)",
+        description="If True, allow overwriting an existing brain (backed up to .bak.<timestamp>/)",
     )
 
 
@@ -478,17 +497,23 @@ class MaterializeContextArgs(BaseModel):
 
 
 async def init_project_brain_impl(args: InitProjectBrainArgs) -> dict[str, Any]:
-    target = _Path(args.target)
-    marker = target / "CONVENTIONS.md"
+    root, err_resp = _resolve_root_or_err(args.target)
+    if err_resp:
+        return err_resp
+
+    # Safety guard: refuse if a brain already exists at <root>/project-brain/
+    # unless force=True. The .parent-vs-self heuristic from the old impl is
+    # gone — Path C makes `root` unambiguously the project root, and the
+    # brain always lands at <root>/project-brain/.
+    marker = _Path(root) / "project-brain" / "CONVENTIONS.md"
     if marker.exists() and not args.force:
         return err(
             "script_error",
-            f"target {args.target} already has an existing brain (CONVENTIONS.md present)",
-            hint="set force=True to overwrite (existing dir is backed up to .bak.<timestamp>/), or pick a different target directory",
+            f"project root {root!r} already has an existing brain at {root}/project-brain/ (CONVENTIONS.md present)",
+            hint="set force=True to overwrite (existing dir is backed up to .bak.<timestamp>/), or pick a different project root",
         )
 
-    home = str(target.parent) if target.name == "project-brain" else str(target)
-    argv = [f"--home={home}", f"--alias={args.primary_project}", f"--title={args.primary_project}"]
+    argv = [f"--home={root}", f"--alias={args.primary_project}", f"--title={args.primary_project}"]
     if args.owner:
         argv.append(f"--owner={args.owner}")
     if args.force:

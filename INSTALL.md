@@ -33,18 +33,18 @@ All three give you a `project-brain-mcp` binary on PATH. The binary speaks MCP o
 
 `project-brain` works in two operational shapes depending on which host you point at the MCP server. Pick the one that matches your host before reading the per-host config sections below.
 
-| Host class | Examples | Has a project root? | How `PROJECT_BRAIN_HOME` resolves |
+| Host class | Examples | Has a project root? | What `PROJECT_BRAIN_HOME` names |
 |---|---|---|---|
-| **CLI tools** | Claude Code, OpenAI Codex CLI | Yes — the cwd is the project | Auto-detected from cwd at MCP-server launch. Each project you `cd` into uses its own `project-brain/` subdir. Per-project. |
-| **Chat apps** | Claude Desktop (Pro / Free / Max), ChatGPT Desktop (Plus) | No — chat surfaces, not IDEs | Set explicitly as an env var in the host's MCP config. One designated brain for the lifetime of the app session. |
+| **CLI tools** | Claude Code, OpenAI Codex CLI | Yes — the cwd is the project root | Auto-detected from cwd at MCP-server launch. The brain at `<cwd>/project-brain/` is used. Per-project. |
+| **Chat apps** | Claude Desktop (Pro / Free / Max), ChatGPT Desktop (Plus) | No — chat surfaces, not IDEs | Set explicitly as an env var in the host's MCP config. Value is the **project root** (the parent of `project-brain/`), NOT the brain dir itself. One designated project for the lifetime of the app session. |
 
 **CLI tools (per-project model)**
 
-You launch `claude-code` (or `codex`) inside a repo. The MCP server is spawned per CLI session. The brain at `<cwd>/project-brain/` is detected automatically; you don't need to set `PROJECT_BRAIN_HOME`. Want the override? Pass it explicitly via the CLI tool's MCP server config or shell env before invocation.
+You launch `claude-code` (or `codex`) inside a repo. The MCP server is spawned per CLI session. The brain at `<cwd>/project-brain/` is detected automatically; you don't need to set `PROJECT_BRAIN_HOME`. Want the override? Pass it explicitly via the CLI tool's MCP server config or shell env before invocation — and remember the value is the project root, not the `/project-brain` subdir.
 
 **Chat apps (single-brain model)**
 
-Claude Desktop and ChatGPT Desktop have no filesystem-project concept. UI-level features like "Claude Projects" or "ChatGPT Projects" are chat containers, not directories — the MCP server can't see them. So in these hosts you pick **one canonical brain** ("my work brain") and point the MCP config at it via `PROJECT_BRAIN_HOME`. That single brain serves resources (`brain://thread-index`, etc.) for the whole app session.
+Claude Desktop and ChatGPT Desktop have no filesystem-project concept. UI-level features like "Claude Projects" or "ChatGPT Projects" are chat containers, not directories — the MCP server can't see them. So in these hosts you pick **one canonical project root** ("my work folder") and point the MCP config at it via `PROJECT_BRAIN_HOME`. The brain at `<PROJECT_BRAIN_HOME>/project-brain/` serves resources (`brain://thread-index`, etc.) for the whole app session. Do NOT include `/project-brain` in the env value — the server appends it.
 
 **Multi-brain workflows in chat apps** — for routine multi-brain use, the **recommended pattern is multiple `mcpServers` entries**, one per brain. See § "Multi-brain setup (chat apps)" below. For one-off cross-brain operations, MCP tools also accept `brain` as a per-call argument so an agent can pass `brain=<other-path>` to operate on a non-default brain without reconfiguring; the env-set brain stays the default and the only one visible to MCP resources.
 
@@ -69,14 +69,14 @@ Paste in this snippet (merge into your existing `mcpServers` if you already have
       "command": "uvx",
       "args": ["project-brain-mcp"],
       "env": {
-        "PROJECT_BRAIN_HOME": "/absolute/path/to/your/brain"
+        "PROJECT_BRAIN_HOME": "/absolute/path/to/your/project-root"
       }
     }
   }
 }
 ```
 
-`PROJECT_BRAIN_HOME` tells the server where the brain on disk lives — the directory containing `thread-index.md`, `current-state.md`, `CONVENTIONS.md`, and the `threads/`, `tree/`, `archive/` subdirectories. If you don't have a brain yet, set this to where you want one and use the `init_project_brain` tool to scaffold it.
+`PROJECT_BRAIN_HOME` tells the server where your **project root** lives. The brain itself sits at `<root>/project-brain/`. The MCP server appends the `/project-brain` suffix automatically — do NOT include it in the env value. If you don't have a brain yet, set `PROJECT_BRAIN_HOME` to the directory where you want one and ask the agent to run `init_project_brain` — it'll create `<root>/project-brain/` for you.
 
 If you installed via pipx or pip-user instead of uvx, change `"command": "uvx"` to `"command": "project-brain-mcp"` and drop the `"args"` line.
 
@@ -97,21 +97,21 @@ This is the cleanest UX for routine multi-brain use because each brain gets its 
       "command": "uvx",
       "args": ["project-brain-mcp"],
       "env": {
-        "PROJECT_BRAIN_HOME": "/Users/you/work/project-brain"
+        "PROJECT_BRAIN_HOME": "/Users/you/work"
       }
     },
     "project-brain-personal": {
       "command": "uvx",
       "args": ["project-brain-mcp"],
       "env": {
-        "PROJECT_BRAIN_HOME": "/Users/you/personal/project-brain"
+        "PROJECT_BRAIN_HOME": "/Users/you/personal"
       }
     }
   }
 }
 ```
 
-Add as many entries as you have brains. Each must have a **unique server name** (the JSON key — here `project-brain-work` vs `project-brain-personal`). The PROJECT_BRAIN_HOME values are absolute paths to each brain.
+Add as many entries as you have brains. Each must have a **unique server name** (the JSON key — here `project-brain-work` vs `project-brain-personal`). The `PROJECT_BRAIN_HOME` values are absolute paths to each **project root** (NOT the `project-brain/` subdir — the server appends that automatically). For each entry, the brain on disk is at `<PROJECT_BRAIN_HOME>/project-brain/`.
 
 **How the agent picks the right brain.** Claude Desktop (and most MCP-capable chat apps) namespace tools by server name in the form `mcp__<server-name>__<tool-name>`. So the agent sees two distinct tool surfaces: `mcp__project-brain-work__new_thread` and `mcp__project-brain-personal__new_thread`. When you say "create a thread in my work brain," the agent calls the work-server tool; "in my personal brain" → the personal-server tool. The naming is descriptive enough that the picking is reliable.
 
@@ -152,14 +152,14 @@ Three steps to confirm the install is working. Each is independent — if step 1
 
     The agent should call the `list_threads` tool with no `brain` argument and show whatever threads exist under `$PROJECT_BRAIN_HOME/threads/`. The server reads `PROJECT_BRAIN_HOME` from the MCP config's `env` block; you don't need to tell the agent where the brain is. An empty list against a fresh brain is still a successful call.
 
-3. **Ask the agent to create a thread.** In the same chat:
+3. **Ask the agent to create a thread.** In the same chat (no path needed — the server uses `$PROJECT_BRAIN_HOME` automatically):
 
     > Create a thread called "install test" with purpose "verifying the MCP install."
 
-    Same pattern — no path in the prompt, no `brain` argument needed. The agent calls `new_thread` with just the slug / title / purpose; the server uses `$PROJECT_BRAIN_HOME` for the brain. After it reports success, check the filesystem:
+    Same pattern — no path in the prompt, no `brain` argument needed. The agent calls `new_thread` with just the slug / title / purpose; the server resolves the brain to `<$PROJECT_BRAIN_HOME>/project-brain/`. After it reports success, check the filesystem:
 
     ```bash
-    ls "$PROJECT_BRAIN_HOME/threads/install-test/"
+    ls "$PROJECT_BRAIN_HOME/project-brain/threads/install-test/"
     ```
 
     Expected: `thread.md`, `decisions-candidates.md`, `open-questions.md`. If those files are there, the roundtrip works end-to-end.

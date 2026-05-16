@@ -152,7 +152,11 @@ def _assert_err(call_resp: Any, code: str, label: str) -> dict[str, Any]:
 
 async def _run() -> int:
     tmp = Path(tempfile.mkdtemp(prefix="mcp-smoke-"))
-    brain = tmp / "brain"
+    # Path C: PROJECT_BRAIN_HOME is the project root; the brain lives at
+    # <root>/project-brain/. Tool calls that pass `brain` explicitly pass the
+    # project root, not the brain dir.
+    project_root = tmp
+    brain = project_root / "project-brain"
     try:
         _scaffold_brain(brain)
 
@@ -164,7 +168,7 @@ async def _run() -> int:
                    "CODEX_PROJECT_ROOT",
                    "CLAUDE_PROJECT_ROOT",
                }}
-        env["PROJECT_BRAIN_HOME"] = str(brain)
+        env["PROJECT_BRAIN_HOME"] = str(project_root)
 
         params = StdioServerParameters(
             command=sys.executable,
@@ -220,7 +224,7 @@ async def _run() -> int:
                 create_resp = await session.call_tool(
                     "new_thread",
                     arguments={
-                        "brain": str(brain),
+                        "brain": str(project_root),
                         "slug": slug,
                         "title": "Smoke MCP thread",
                         "purpose": "MCP roundtrip smoke",
@@ -234,7 +238,7 @@ async def _run() -> int:
 
                 # 6. READ — list_threads succeeds
                 read_resp = await session.call_tool(
-                    "list_threads", arguments={"brain": str(brain), "status": "active"},
+                    "list_threads", arguments={"brain": str(project_root), "status": "active"},
                 )
                 _assert_ok(read_resp, "list_threads read")
 
@@ -242,7 +246,7 @@ async def _run() -> int:
                 update_resp = await session.call_tool(
                     "update_thread",
                     arguments={
-                        "brain": str(brain),
+                        "brain": str(project_root),
                         "slug": slug,
                         "operation": "refine",
                         "target": "locking",
@@ -259,7 +263,7 @@ async def _run() -> int:
                 artifact_resp = await session.call_tool(
                     "record_artifact",
                     arguments={
-                        "brain": str(brain),
+                        "brain": str(project_root),
                         "slug": slug,
                         "title": "Smoke test note",
                         "content": "# Smoke note\n\nthis is a smoke-test artifact.\n",
@@ -280,7 +284,7 @@ async def _run() -> int:
                 assign_resp = await session.call_tool(
                     "assign_thread",
                     arguments={
-                        "brain": str(brain),
+                        "brain": str(project_root),
                         "slug": slug,
                         "add": "smoke@example.com",
                     },
@@ -291,7 +295,7 @@ async def _run() -> int:
                 park_resp = await session.call_tool(
                     "park_thread",
                     arguments={
-                        "brain": str(brain),
+                        "brain": str(project_root),
                         "slug": slug,
                         "reason": "smoke test parking",
                     },
@@ -301,7 +305,7 @@ async def _run() -> int:
                 # 10. RESTORE — unpark the thread
                 unpark_resp = await session.call_tool(
                     "park_thread",
-                    arguments={"brain": str(brain), "slug": slug, "unpark": True},
+                    arguments={"brain": str(project_root), "slug": slug, "unpark": True},
                 )
                 _assert_ok(unpark_resp, "park_thread unpark")
 
@@ -311,10 +315,12 @@ async def _run() -> int:
                 import tempfile as _tempfile  # local import keeps top stable
                 fresh = Path(_tempfile.mkdtemp(prefix="mcp-smoke-init-"))
                 try:
+                    # Path C: target is the project root; the brain lands at
+                    # <target>/project-brain/. Passing `fresh` directly here.
                     init_resp = await session.call_tool(
                         "init_project_brain",
                         arguments={
-                            "target": str(fresh / "project-brain"),
+                            "target": str(fresh),
                             "primary_project": "init-smoke",
                         },
                     )
@@ -327,16 +333,17 @@ async def _run() -> int:
                         assert code == "script_error", \
                             f"init_project_brain returned wrong error code: {init_payload!r}"
 
-                    # 10b. INIT safety guard — repeat with target that has a
-                    # planted CONVENTIONS.md; without force=True we expect
-                    # the structured script_error "existing brain" refusal.
-                    planted = fresh / "planted"
-                    planted.mkdir(parents=True, exist_ok=True)
-                    (planted / "CONVENTIONS.md").write_text("# pre-existing\n")
+                    # 10b. INIT safety guard — plant a CONVENTIONS.md inside the
+                    # would-be brain dir (planted/project-brain/CONVENTIONS.md);
+                    # without force=True we expect the structured script_error
+                    # "existing brain" refusal.
+                    planted_root = fresh / "planted-root"
+                    (planted_root / "project-brain").mkdir(parents=True, exist_ok=True)
+                    (planted_root / "project-brain" / "CONVENTIONS.md").write_text("# pre-existing\n")
                     init_guard_resp = await session.call_tool(
                         "init_project_brain",
                         arguments={
-                            "target": str(planted),
+                            "target": str(planted_root),
                             "primary_project": "guard-smoke",
                         },
                     )
@@ -356,7 +363,7 @@ async def _run() -> int:
                 consent_resp = await session.call_tool(
                     "promote_thread_to_tree",
                     arguments={
-                        "brain": str(brain),
+                        "brain": str(project_root),
                         "slug": slug,
                         # allow_domain deliberately omitted
                     },
@@ -371,7 +378,7 @@ async def _run() -> int:
                 materialize_resp = await session.call_tool(
                     "materialize_context",
                     arguments={
-                        "brain": str(brain),
+                        "brain": str(project_root),
                         "artifact": f"threads/{slug}/thread.md",
                     },
                 )
@@ -396,7 +403,7 @@ async def _run() -> int:
                 bad_slug_resp = await session.call_tool(
                     "new_thread",
                     arguments={
-                        "brain": str(brain),
+                        "brain": str(project_root),
                         "slug": "",
                         "title": "x",
                         "purpose": "x",
@@ -433,7 +440,10 @@ async def _run() -> int:
                 # tools module (rather than via the subprocess MCP session)
                 # because we'd need a second server-launch with no env to test
                 # via call_tool, and the failure mode is at the impl boundary.
-                from project_brain_mcp.tools import ListThreadsArgs, list_threads_impl
+                from project_brain_mcp.tools import (
+                    InitProjectBrainArgs, ListThreadsArgs,
+                    init_project_brain_impl, list_threads_impl,
+                )
                 saved_env = os.environ.pop("PROJECT_BRAIN_HOME", None)
                 try:
                     no_env_resp = await list_threads_impl(ListThreadsArgs())
@@ -445,13 +455,53 @@ async def _run() -> int:
                     msg = no_env_resp["error"].get("message") or ""
                     assert "PROJECT_BRAIN_HOME" in hint or "PROJECT_BRAIN_HOME" in msg, \
                         f"hint should mention PROJECT_BRAIN_HOME env var: hint={hint!r} msg={msg!r}"
+
+                    # 14c. PATH C — init from env. PROJECT_BRAIN_HOME names the
+                    # project root; init_project_brain with no target should
+                    # create <env>/project-brain/ (NOT <env> directly).
+                    with tempfile.TemporaryDirectory(prefix="mcp-smoke-pathc-") as init_env_root:
+                        os.environ["PROJECT_BRAIN_HOME"] = init_env_root
+                        init_env_resp = await init_project_brain_impl(
+                            InitProjectBrainArgs(primary_project="smoketest-env"),
+                        )
+                        # Layer-1 init-brain.sh may fail on this host for
+                        # unrelated reasons (registry collisions, etc.); we
+                        # accept ok=True OR a script_error that isn't the
+                        # safety guard. If it succeeds, the brain must land
+                        # at <env>/project-brain/CONVENTIONS.md.
+                        if init_env_resp["ok"]:
+                            created = Path(init_env_root) / "project-brain" / "CONVENTIONS.md"
+                            assert created.exists(), \
+                                f"expected brain at {created} after env-default init"
+                        else:
+                            code = init_env_resp["error"]["code"]
+                            assert code == "script_error", \
+                                f"env-default init returned wrong code: {init_env_resp!r}"
+
+                    # 14d. PATH C — reject PROJECT_BRAIN_HOME ending in
+                    # /project-brain (the old semantic). Everyday tools must
+                    # return validation_error with a hint pointing at the
+                    # corrected parent path.
+                    os.environ["PROJECT_BRAIN_HOME"] = "/tmp/something/project-brain"
+                    bad_env_resp = await list_threads_impl(ListThreadsArgs())
+                    assert bad_env_resp["ok"] is False, \
+                        f"expected rejection of trailing /project-brain, got {bad_env_resp!r}"
+                    assert bad_env_resp["error"]["code"] == "validation_error", \
+                        f"expected validation_error, got {bad_env_resp!r}"
+                    bad_msg = bad_env_resp["error"]["message"]
+                    assert "parent" in bad_msg.lower(), \
+                        f"rejection message should mention parent dir suggestion: {bad_msg!r}"
+                    assert "/tmp/something" in bad_msg, \
+                        f"rejection should include the corrected path '/tmp/something': {bad_msg!r}"
                 finally:
                     if saved_env is not None:
                         os.environ["PROJECT_BRAIN_HOME"] = saved_env
+                    else:
+                        os.environ.pop("PROJECT_BRAIN_HOME", None)
 
                 # 15. Final consistency check — verify_tree clean
                 verify_resp = await session.call_tool(
-                    "verify_tree", arguments={"brain": str(brain)},
+                    "verify_tree", arguments={"brain": str(project_root)},
                 )
                 verify_payload = _assert_ok(verify_resp, "verify_tree final")
                 stdout = (verify_payload.get("data") or {}).get("stdout", "")

@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
+
+from ._subprocess import resolve_brain_dir
 
 RESOURCES: dict[str, str] = {
     "thread-index": "thread-index.md",
@@ -13,14 +14,13 @@ RESOURCES: dict[str, str] = {
 
 
 def resolve_brain() -> Path:
-    bh = os.environ.get("PROJECT_BRAIN_HOME")
-    if not bh:
-        raise RuntimeError(
-            "PROJECT_BRAIN_HOME not set; cannot resolve brain root for resources"
-        )
-    p = Path(bh).resolve()
+    """Resolve the brain directory (<root>/project-brain/) for resource reads."""
+    brain_dir, err_msg = resolve_brain_dir(None)
+    if err_msg:
+        raise RuntimeError(err_msg)
+    p = Path(brain_dir).resolve()
     if not p.is_dir():
-        raise RuntimeError(f"PROJECT_BRAIN_HOME={p} is not a directory")
+        raise RuntimeError(f"brain dir {p} does not exist (PROJECT_BRAIN_HOME may point at an empty project root)")
     return p
 
 

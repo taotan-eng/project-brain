@@ -251,8 +251,8 @@ _materialize_context = wrap_validation(MaterializeContextArgs, materialize_conte
     ),
 )
 async def init_project_brain(
-    target: str,
     primary_project: str,
+    target: str | None = None,
     owner: str | None = None,
     force: bool = False,
 ) -> dict[str, Any]:

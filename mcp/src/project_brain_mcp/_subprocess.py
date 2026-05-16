@@ -14,27 +14,54 @@ from pathlib import Path
 from typing import Any
 
 
-def resolve_brain(arg: str | None) -> tuple[str | None, str | None]:
-    """Resolve the brain path from an arg or $PROJECT_BRAIN_HOME.
+def resolve_project_root(arg: str | None) -> tuple[str | None, str | None]:
+    """Resolve the project root — the parent dir of project-brain/.
 
-    Returns `(brain_path, error_message)`. On success, `error_message` is
-    None and `brain_path` is the resolved string. On failure (neither
-    supplied), `brain_path` is None and `error_message` describes the gap.
+    Path C semantic (day-5 hotfix #2): `PROJECT_BRAIN_HOME` (and the matching
+    `target` arg on `init_project_brain`) names the *project root*, not the
+    brain directory itself. The brain always lives at `<root>/project-brain/`.
+    This matches the Cowork workspace-folder pattern, the CLI cwd pattern,
+    and what the bash scripts have always done (`init-brain.sh` creates
+    `<home>/project-brain/`).
+
+    Used by `init_project_brain_impl`. Other tools use `resolve_brain_dir`.
+
+    Returns `(root_path, error_message)`. On success, `error_message` is None.
+    On failure (env unset and no arg, or trailing `/project-brain` detected),
+    `root_path` is None and `error_message` describes the gap with a hint.
+    """
+    path = (arg or os.environ.get("PROJECT_BRAIN_HOME", "")).strip()
+    if not path:
+        return None, "project root not specified and PROJECT_BRAIN_HOME env var not set"
+    normalized = path.rstrip("/").rstrip("\\")
+    if normalized.endswith("/project-brain") or normalized.endswith("\\project-brain"):
+        suggested = normalized[: -len("/project-brain")]
+        return None, (
+            f"PROJECT_BRAIN_HOME (or target) should be the parent dir, not the brain itself. "
+            f"You passed {path!r}; try {suggested!r} instead. "
+            f"The brain at <root>/project-brain/ will be created or used automatically."
+        )
+    return normalized, None
+
+
+def resolve_brain_dir(arg: str | None) -> tuple[str | None, str | None]:
+    """Resolve the brain directory — where CONVENTIONS.md, threads/, etc. live.
+
+    Used by every tool except `init_project_brain`. Returns `(brain_dir,
+    error_message)` where `brain_dir = <root>/project-brain/`. Errors from
+    `resolve_project_root` (env unset, trailing `/project-brain`) propagate
+    verbatim.
 
     Caller pattern in *_impl:
 
-        brain, err_msg = resolve_brain(args.brain)
+        brain, err_msg = resolve_brain_dir(args.brain)
         if err_msg:
-            return err("validation_error", err_msg,
-                       hint="set PROJECT_BRAIN_HOME in your MCP config's env block, or pass brain=<path>")
-        # use `brain` (not args.brain) in argv-building
+            return err("validation_error", err_msg, hint=...)
     """
-    if arg and arg.strip():
-        return arg.strip(), None
-    env = os.environ.get("PROJECT_BRAIN_HOME", "").strip()
-    if env:
-        return env, None
-    return None, "brain not specified and PROJECT_BRAIN_HOME env var not set"
+    root, err_msg = resolve_project_root(arg)
+    if err_msg:
+        return None, err_msg
+    return str(Path(root) / "project-brain"), None
 
 
 def find_pack_root(start: Path | None = None) -> Path:
