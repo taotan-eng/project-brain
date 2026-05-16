@@ -456,27 +456,52 @@ async def _run() -> int:
                     assert "PROJECT_BRAIN_HOME" in hint or "PROJECT_BRAIN_HOME" in msg, \
                         f"hint should mention PROJECT_BRAIN_HOME env var: hint={hint!r} msg={msg!r}"
 
-                    # 14c. PATH C — init from env. PROJECT_BRAIN_HOME names the
-                    # project root; init_project_brain with no target should
-                    # create <env>/project-brain/ (NOT <env> directly).
-                    with tempfile.TemporaryDirectory(prefix="mcp-smoke-pathc-") as init_env_root:
+                    # 14c. PATH C + hotfix #3 — init with NO args at all.
+                    # PROJECT_BRAIN_HOME is the project root; primary_project
+                    # auto-derives from the target leaf via kebab-case. The
+                    # "create project brain" prompt should resolve cleanly
+                    # without any agent->user prompting.
+                    import re as _re
+                    with tempfile.TemporaryDirectory(prefix="Test-Brain-") as init_env_root:
                         os.environ["PROJECT_BRAIN_HOME"] = init_env_root
-                        init_env_resp = await init_project_brain_impl(
-                            InitProjectBrainArgs(primary_project="smoketest-env"),
-                        )
+                        init_env_resp = await init_project_brain_impl(InitProjectBrainArgs())
                         # Layer-1 init-brain.sh may fail on this host for
                         # unrelated reasons (registry collisions, etc.); we
                         # accept ok=True OR a script_error that isn't the
-                        # safety guard. If it succeeds, the brain must land
-                        # at <env>/project-brain/CONVENTIONS.md.
+                        # safety guard.
                         if init_env_resp["ok"]:
                             created = Path(init_env_root) / "project-brain" / "CONVENTIONS.md"
                             assert created.exists(), \
                                 f"expected brain at {created} after env-default init"
+                            # Verify the derived alias matches the leaf
+                            cfg = Path(init_env_root) / "project-brain" / "config.yaml"
+                            if cfg.exists():
+                                text = cfg.read_text()
+                                leaf = Path(init_env_root).name
+                                expected_alias = _re.sub(r"[^a-z0-9]+", "-", leaf.lower()).strip("-")
+                                assert expected_alias in text, \
+                                    f"expected auto-derived alias {expected_alias!r} not in config.yaml: {text[:300]}"
                         else:
                             code = init_env_resp["error"]["code"]
                             assert code == "script_error", \
                                 f"env-default init returned wrong code: {init_env_resp!r}"
+
+                    # 14c2. Explicit primary_project still overrides derivation.
+                    with tempfile.TemporaryDirectory(prefix="mcp-smoke-explicit-") as explicit_root:
+                        os.environ["PROJECT_BRAIN_HOME"] = explicit_root
+                        explicit_resp = await init_project_brain_impl(
+                            InitProjectBrainArgs(primary_project="my-explicit-alias"),
+                        )
+                        if explicit_resp["ok"]:
+                            cfg = Path(explicit_root) / "project-brain" / "config.yaml"
+                            if cfg.exists():
+                                text = cfg.read_text()
+                                assert "my-explicit-alias" in text, \
+                                    f"explicit primary_project not honored: {text[:300]}"
+                        else:
+                            code = explicit_resp["error"]["code"]
+                            assert code == "script_error", \
+                                f"explicit-alias init returned wrong code: {explicit_resp!r}"
 
                     # 14d. PATH C — reject PROJECT_BRAIN_HOME ending in
                     # /project-brain (the old semantic). Everyday tools must

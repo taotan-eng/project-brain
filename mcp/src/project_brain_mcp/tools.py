@@ -6,12 +6,26 @@ Every tool's `*_impl` returns the structured response shape from
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from ._response import err, from_subprocess_result, ok
 from ._subprocess import find_pack_root, resolve_brain_dir, resolve_project_root, run_script
+
+
+_KEBAB_RE = re.compile(r"[^a-z0-9]+")
+
+
+def _kebab_from_leaf(leaf: str) -> str:
+    """Normalize a directory leaf to kebab-case for use as a project alias.
+
+    Lowercase, then collapse any run of non-[a-z0-9] characters into a single
+    hyphen, then strip leading/trailing hyphens. Returns '' if the result is
+    empty (caller decides how to surface the gap).
+    """
+    return _KEBAB_RE.sub("-", leaf.lower()).strip("-")
 
 
 _BRAIN_FIELD_DESC = (
@@ -419,15 +433,26 @@ from pathlib import Path as _Path
 class InitProjectBrainArgs(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    primary_project: str = Field(
-        min_length=1,
-        description="Alias for the new brain's primary project (kebab-case)",
-    )
     target: str | None = Field(
         default=None,
         description=(
-            "Project root where the brain should be initialized. The brain lands at "
-            "<target>/project-brain/. Defaults to $PROJECT_BRAIN_HOME if set."
+            "Project root where the brain should be initialized. The brain lands "
+            "at <target>/project-brain/. **Defaults to $PROJECT_BRAIN_HOME if set** "
+            "(the configured-host case). **Do NOT prompt the user for this field** "
+            "when $PROJECT_BRAIN_HOME is configured — the env var represents the "
+            "user's pre-authorized location. Only pass an explicit target when the "
+            "user has named a different path in the current conversation."
+        ),
+    )
+    primary_project: str | None = Field(
+        default=None,
+        description=(
+            "Kebab-case alias for the new brain's primary project. "
+            "**If omitted**, auto-derived from the target directory's leaf name "
+            "(e.g. target='/Users/me/Test-Brain' → primary_project='test-brain'). "
+            "**Prefer omitting this field over prompting the user** — the "
+            "auto-derivation is reliable for the common case where the user has "
+            "already chosen a meaningful project root path."
         ),
     )
     owner: str | None = Field(
@@ -501,6 +526,19 @@ async def init_project_brain_impl(args: InitProjectBrainArgs) -> dict[str, Any]:
     if err_resp:
         return err_resp
 
+    # Auto-derive primary_project from the target leaf when omitted, so the
+    # zero-args call ("create project brain") resolves cleanly via env + leaf.
+    primary_project = (args.primary_project or "").strip()
+    if not primary_project:
+        leaf = _Path(root).name or "project-brain"
+        primary_project = _kebab_from_leaf(leaf)
+        if not primary_project:
+            return err(
+                "validation_error",
+                f"could not derive primary_project from target leaf {leaf!r} (after kebab-case normalization, the result was empty)",
+                hint="pass primary_project=<kebab-case-name> explicitly",
+            )
+
     # Safety guard: refuse if a brain already exists at <root>/project-brain/
     # unless force=True. The .parent-vs-self heuristic from the old impl is
     # gone — Path C makes `root` unambiguously the project root, and the
@@ -513,7 +551,7 @@ async def init_project_brain_impl(args: InitProjectBrainArgs) -> dict[str, Any]:
             hint="set force=True to overwrite (existing dir is backed up to .bak.<timestamp>/), or pick a different project root",
         )
 
-    argv = [f"--home={root}", f"--alias={args.primary_project}", f"--title={args.primary_project}"]
+    argv = [f"--home={root}", f"--alias={primary_project}", f"--title={primary_project}"]
     if args.owner:
         argv.append(f"--owner={args.owner}")
     if args.force:
