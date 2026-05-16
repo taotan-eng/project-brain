@@ -434,27 +434,99 @@ async def _run() -> int:
                 assert "Smoke conventions" in conv_text, \
                     f"CONVENTIONS resource content unexpected: {conv_text[:200]}"
 
-                # 14b. ENV-MISSING negative — when no brain arg AND no env var,
-                # everyday tools must return validation_error with a hint
-                # mentioning PROJECT_BRAIN_HOME. Tested in-process against the
-                # tools module (rather than via the subprocess MCP session)
-                # because we'd need a second server-launch with no env to test
-                # via call_tool, and the failure mode is at the impl boundary.
+                # 14b. ENV-MISSING negative — when nothing the resolution
+                # chain looks at is set (no arg, no env vars, no cache, no
+                # git ancestor of cwd), everyday tools must return
+                # validation_error from chain step 8. Belt-and-suspenders
+                # isolation: explicitly clear every env var the chain reads,
+                # unlink the last-used-root cache, AND chdir to a fresh
+                # /tmp/no-git-XXX with no parent .git so step 6 also misses.
                 from project_brain_mcp.tools import (
                     InitProjectBrainArgs, ListThreadsArgs,
                     init_project_brain_impl, list_threads_impl,
                 )
+                from project_brain_mcp._subprocess import _PROJECT_ROOT_CACHE
+
+                _chain_env_vars_b = (
+                    "PROJECT_BRAIN_HOME",
+                    "COWORK_WORKSPACE_FOLDER",
+                    "CODEX_PROJECT_ROOT",
+                    "CLAUDE_PROJECT_ROOT",
+                )
+                saved_env_b = {k: os.environ.get(k) for k in _chain_env_vars_b}
+                saved_cwd_b = os.getcwd()
+                saved_cache_b = (
+                    _PROJECT_ROOT_CACHE.read_text() if _PROJECT_ROOT_CACHE.exists() else None
+                )
+                try:
+                    for k in _chain_env_vars_b:
+                        os.environ.pop(k, None)
+                    _PROJECT_ROOT_CACHE.unlink(missing_ok=True)
+
+                    with tempfile.TemporaryDirectory(dir="/tmp", prefix="no-git-") as nowhere:
+                        os.chdir(nowhere)
+                        no_env_resp = await list_threads_impl(ListThreadsArgs())
+                        assert no_env_resp["ok"] is False, \
+                            f"expected validation_error when chain exhausted, got {no_env_resp!r}"
+                        assert no_env_resp["error"]["code"] == "validation_error", \
+                            f"expected validation_error code, got {no_env_resp['error']!r}"
+                        msg = no_env_resp["error"].get("message") or ""
+                        assert "could not resolve" in msg.lower(), \
+                            f"error message should mention exhausted chain: {msg!r}"
+                        assert "PROJECT_BRAIN_HOME" in msg, \
+                            f"error message should list the env vars tried: {msg!r}"
+
+                    # 14b2. CACHE POSITIVE — populate the cache with no env
+                    # set; the chain MUST hit source 7. The resulting tool
+                    # call will likely script_error (the cached path has no
+                    # real brain), but the resolution itself succeeded — the
+                    # important signal is that the error is NOT
+                    # validation_error (which would mean the cache wasn't
+                    # consulted). Guards against future regressions that
+                    # silently drop the cache step.
+                    _PROJECT_ROOT_CACHE.parent.mkdir(parents=True, exist_ok=True)
+                    _PROJECT_ROOT_CACHE.write_text("/tmp/known-cached-root\n")
+                    with tempfile.TemporaryDirectory(dir="/tmp", prefix="no-git-cache-") as nowhere2:
+                        os.chdir(nowhere2)
+                        for k in _chain_env_vars_b:
+                            os.environ.pop(k, None)
+                        cache_resp = await list_threads_impl(ListThreadsArgs())
+                        # Either ok=True (a brain exists there) or script_error
+                        # (resolution succeeded, script failed). NOT validation_error.
+                        ok = cache_resp.get("ok") is True
+                        code = (cache_resp.get("error") or {}).get("code")
+                        assert ok or code == "script_error", \
+                            f"cache source not consulted by chain: {cache_resp!r}"
+
+                    # Restore cwd before continuing with the rest of 14c+.
+                    os.chdir(saved_cwd_b)
+                    _PROJECT_ROOT_CACHE.unlink(missing_ok=True)
+                except BaseException:
+                    # Make sure env/cwd/cache are restored even if the new
+                    # assertions blow up before reaching the outer finally.
+                    for k, v in saved_env_b.items():
+                        if v is not None:
+                            os.environ[k] = v
+                        else:
+                            os.environ.pop(k, None)
+                    os.chdir(saved_cwd_b)
+                    if saved_cache_b is not None:
+                        _PROJECT_ROOT_CACHE.parent.mkdir(parents=True, exist_ok=True)
+                        _PROJECT_ROOT_CACHE.write_text(saved_cache_b)
+                    else:
+                        _PROJECT_ROOT_CACHE.unlink(missing_ok=True)
+                    raise
+
+                # Pre-existing 14c+ block continues with `saved_env` (= the
+                # original PROJECT_BRAIN_HOME) handling. Restore env vars we
+                # cleared so 14c can set PROJECT_BRAIN_HOME freshly.
+                for k, v in saved_env_b.items():
+                    if v is not None:
+                        os.environ[k] = v
+                    else:
+                        os.environ.pop(k, None)
                 saved_env = os.environ.pop("PROJECT_BRAIN_HOME", None)
                 try:
-                    no_env_resp = await list_threads_impl(ListThreadsArgs())
-                    assert no_env_resp["ok"] is False, \
-                        f"expected validation_error when no brain/env, got {no_env_resp!r}"
-                    assert no_env_resp["error"]["code"] == "validation_error", \
-                        f"expected validation_error code, got {no_env_resp['error']!r}"
-                    hint = no_env_resp["error"].get("hint") or ""
-                    msg = no_env_resp["error"].get("message") or ""
-                    assert "PROJECT_BRAIN_HOME" in hint or "PROJECT_BRAIN_HOME" in msg, \
-                        f"hint should mention PROJECT_BRAIN_HOME env var: hint={hint!r} msg={msg!r}"
 
                     # 14c. PATH C + hotfix #3 — init with NO args at all.
                     # PROJECT_BRAIN_HOME is the project root; primary_project
