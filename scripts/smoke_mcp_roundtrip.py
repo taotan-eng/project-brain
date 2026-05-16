@@ -518,6 +518,120 @@ async def _run() -> int:
                         f"rejection message should mention parent dir suggestion: {bad_msg!r}"
                     assert "/tmp/something" in bad_msg, \
                         f"rejection should include the corrected path '/tmp/something': {bad_msg!r}"
+
+                    # 14e. RESOLUTION CHAIN — assert each link in isolation.
+                    # Saves/restores all env vars + cwd + cache file so the
+                    # rest of the test isn't disturbed.
+                    from project_brain_mcp._subprocess import (
+                        resolve_project_root,
+                        _write_root_cache,
+                        _PROJECT_ROOT_CACHE,
+                    )
+
+                    chain_env_vars = (
+                        "PROJECT_BRAIN_HOME",
+                        "COWORK_WORKSPACE_FOLDER",
+                        "CODEX_PROJECT_ROOT",
+                        "CLAUDE_PROJECT_ROOT",
+                    )
+                    saved_chain_env = {k: os.environ.get(k) for k in chain_env_vars}
+                    saved_cwd = os.getcwd()
+                    saved_cache = (
+                        _PROJECT_ROOT_CACHE.read_text() if _PROJECT_ROOT_CACHE.exists() else None
+                    )
+
+                    def _clear_chain_env() -> None:
+                        for k in chain_env_vars:
+                            os.environ.pop(k, None)
+
+                    def _eq_path(a: str, b: str) -> bool:
+                        return Path(a).resolve() == Path(b).resolve()
+
+                    try:
+                        # Link 1: explicit arg overrides everything.
+                        _clear_chain_env()
+                        os.environ["PROJECT_BRAIN_HOME"] = "/tmp/chain-env"
+                        r, e = resolve_project_root("/tmp/chain-explicit")
+                        assert e is None and _eq_path(r, "/tmp/chain-explicit"), \
+                            f"chain link 1 (explicit): {r=} {e=}"
+
+                        # Link 2: PROJECT_BRAIN_HOME.
+                        _clear_chain_env()
+                        os.environ["PROJECT_BRAIN_HOME"] = "/tmp/chain-pbh"
+                        r, e = resolve_project_root(None)
+                        assert e is None and _eq_path(r, "/tmp/chain-pbh"), \
+                            f"chain link 2 (PROJECT_BRAIN_HOME): {r=} {e=}"
+
+                        # Link 3: COWORK_WORKSPACE_FOLDER when PBH unset.
+                        _clear_chain_env()
+                        os.environ["COWORK_WORKSPACE_FOLDER"] = "/tmp/chain-cwf"
+                        r, e = resolve_project_root(None)
+                        assert e is None and _eq_path(r, "/tmp/chain-cwf"), \
+                            f"chain link 3 (COWORK_WORKSPACE_FOLDER): {r=} {e=}"
+
+                        # Link 4: CODEX_PROJECT_ROOT.
+                        _clear_chain_env()
+                        os.environ["CODEX_PROJECT_ROOT"] = "/tmp/chain-codex"
+                        r, e = resolve_project_root(None)
+                        assert e is None and _eq_path(r, "/tmp/chain-codex"), \
+                            f"chain link 4 (CODEX_PROJECT_ROOT): {r=} {e=}"
+
+                        # Link 5: CLAUDE_PROJECT_ROOT.
+                        _clear_chain_env()
+                        os.environ["CLAUDE_PROJECT_ROOT"] = "/tmp/chain-cc"
+                        r, e = resolve_project_root(None)
+                        assert e is None and _eq_path(r, "/tmp/chain-cc"), \
+                            f"chain link 5 (CLAUDE_PROJECT_ROOT): {r=} {e=}"
+
+                        # Link 6: git walk-up from cwd when no env is set.
+                        _clear_chain_env()
+                        with tempfile.TemporaryDirectory() as gitroot:
+                            (Path(gitroot) / ".git").mkdir()
+                            subdir = Path(gitroot) / "subdir"
+                            subdir.mkdir()
+                            os.chdir(subdir)
+                            _PROJECT_ROOT_CACHE.unlink(missing_ok=True)
+                            r, e = resolve_project_root(None)
+                            assert e is None and _eq_path(r, gitroot), \
+                                f"chain link 6 (git walk-up): {r=} {e=}"
+
+                        # Link 7: last-used cache when no env and no git.
+                        _clear_chain_env()
+                        with tempfile.TemporaryDirectory() as nowhere:
+                            os.chdir(nowhere)
+                            _write_root_cache("/tmp/chain-cached")
+                            r, e = resolve_project_root(None)
+                            assert e is None and _eq_path(r, "/tmp/chain-cached"), \
+                                f"chain link 7 (cache): {r=} {e=}"
+
+                        # Link 8: nothing matches -> structured error listing
+                        # every source tried.
+                        _clear_chain_env()
+                        _PROJECT_ROOT_CACHE.unlink(missing_ok=True)
+                        with tempfile.TemporaryDirectory() as nowhere:
+                            os.chdir(nowhere)
+                            r, e = resolve_project_root(None)
+                            assert r is None, f"chain link 8 should fail: {r=}"
+                            assert "could not resolve" in e.lower(), \
+                                f"chain link 8 error message: {e!r}"
+                            for needle in (
+                                "PROJECT_BRAIN_HOME",
+                                "COWORK_WORKSPACE_FOLDER",
+                                "git-walk-up",
+                            ):
+                                assert needle in e, \
+                                    f"chain link 8 error should list {needle!r}: {e!r}"
+                    finally:
+                        _clear_chain_env()
+                        for k, v in saved_chain_env.items():
+                            if v is not None:
+                                os.environ[k] = v
+                        os.chdir(saved_cwd)
+                        if saved_cache is not None:
+                            _PROJECT_ROOT_CACHE.parent.mkdir(parents=True, exist_ok=True)
+                            _PROJECT_ROOT_CACHE.write_text(saved_cache)
+                        else:
+                            _PROJECT_ROOT_CACHE.unlink(missing_ok=True)
                 finally:
                     if saved_env is not None:
                         os.environ["PROJECT_BRAIN_HOME"] = saved_env

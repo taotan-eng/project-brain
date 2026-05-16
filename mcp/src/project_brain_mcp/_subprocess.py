@@ -14,25 +14,51 @@ from pathlib import Path
 from typing import Any
 
 
-def resolve_project_root(arg: str | None) -> tuple[str | None, str | None]:
-    """Resolve the project root — the parent dir of project-brain/.
+_PROJECT_ROOT_CACHE = Path.home() / ".config" / "project-brain" / "last-used-root.txt"
 
-    Path C semantic (day-5 hotfix #2): `PROJECT_BRAIN_HOME` (and the matching
-    `target` arg on `init_project_brain`) names the *project root*, not the
-    brain directory itself. The brain always lives at `<root>/project-brain/`.
-    This matches the Cowork workspace-folder pattern, the CLI cwd pattern,
-    and what the bash scripts have always done (`init-brain.sh` creates
-    `<home>/project-brain/`).
+# Env-var names consulted in priority order. Mirrors verify_tree.config's
+# _HOST_ENV_PROBES so Layer-1 and Layer-2 agree on the source set.
+_ROOT_ENV_VARS = (
+    "PROJECT_BRAIN_HOME",        # explicit MCP config env (chat apps)
+    "COWORK_WORKSPACE_FOLDER",   # Cowork sets at session start
+    "CODEX_PROJECT_ROOT",        # OpenAI Codex CLI
+    "CLAUDE_PROJECT_ROOT",       # Claude Code CLI
+)
 
-    Used by `init_project_brain_impl`. Other tools use `resolve_brain_dir`.
 
-    Returns `(root_path, error_message)`. On success, `error_message` is None.
-    On failure (env unset and no arg, or trailing `/project-brain` detected),
-    `root_path` is None and `error_message` describes the gap with a hint.
-    """
-    path = (arg or os.environ.get("PROJECT_BRAIN_HOME", "")).strip()
-    if not path:
-        return None, "project root not specified and PROJECT_BRAIN_HOME env var not set"
+def _walk_up_for_git(start: Path | None = None) -> Path | None:
+    """Walk up from cwd looking for .git/. Returns the repo root or None."""
+    current = (start or Path.cwd()).resolve()
+    for _ in range(40):  # bounded against malformed symlinks
+        if (current / ".git").exists():
+            return current
+        if current.parent == current:
+            return None
+        current = current.parent
+    return None
+
+
+def _read_root_cache() -> str | None:
+    """Best-effort read of the last-used-root cache. Returns None on any failure."""
+    try:
+        return _PROJECT_ROOT_CACHE.read_text(encoding="utf-8").strip() or None
+    except FileNotFoundError:
+        return None
+    except Exception:
+        return None  # corrupt cache; ignore
+
+
+def _write_root_cache(root: str) -> None:
+    """Best-effort write of the last-used-root cache. Failures don't propagate."""
+    try:
+        _PROJECT_ROOT_CACHE.parent.mkdir(parents=True, exist_ok=True)
+        _PROJECT_ROOT_CACHE.write_text(root.rstrip("/").rstrip("\\") + "\n", encoding="utf-8")
+    except Exception:
+        pass
+
+
+def _validate_and_normalize(path: str) -> tuple[str | None, str | None]:
+    """Reject trailing `/project-brain` (Path C); normalize trailing slash."""
     normalized = path.rstrip("/").rstrip("\\")
     if normalized.endswith("/project-brain") or normalized.endswith("\\project-brain"):
         suggested = normalized[: -len("/project-brain")]
@@ -42,6 +68,99 @@ def resolve_project_root(arg: str | None) -> tuple[str | None, str | None]:
             f"The brain at <root>/project-brain/ will be created or used automatically."
         )
     return normalized, None
+
+
+def _try_layer1_detect() -> tuple[str, str] | None:
+    """Try to delegate env-var + git-walk-up detection to the Layer-1 helper.
+
+    `verify_tree.config.detect_host_project_root` implements the same chain
+    (PROJECT_BRAIN_HOME → COWORK_WORKSPACE_FOLDER → CODEX_PROJECT_ROOT →
+    CLAUDE_PROJECT_ROOT → .git walk-up → cwd). Importing it keeps Layer-1
+    and Layer-2 in sync. We treat its "cwd" fallback as "not found" since
+    Layer-2's last step is a structured error, not silent cwd.
+
+    Returns `(path, source_label)` on success, None if import or detection
+    fell through to cwd.
+    """
+    import sys
+
+    try:
+        pack_root = find_pack_root()
+    except Exception:
+        return None
+    scripts_dir = str(pack_root / "scripts")
+    added = scripts_dir not in sys.path
+    if added:
+        sys.path.insert(0, scripts_dir)
+    try:
+        from verify_tree.config import detect_host_project_root  # noqa: WPS433
+        path, source = detect_host_project_root()
+    except Exception:
+        return None
+    finally:
+        if added:
+            try:
+                sys.path.remove(scripts_dir)
+            except ValueError:
+                pass
+    if source == "cwd":
+        return None  # treat cwd-fallback as a miss; Layer-2 prefers explicit error
+    return str(path), source
+
+
+def resolve_project_root(arg: str | None) -> tuple[str | None, str | None]:
+    """Resolve the project root via the documented 7-step chain.
+
+    Priority order:
+      1. Explicit `arg`
+      2. $PROJECT_BRAIN_HOME (MCP config / chat-app)
+      3. $COWORK_WORKSPACE_FOLDER (Cowork session env)
+      4. $CODEX_PROJECT_ROOT (OpenAI Codex CLI)
+      5. $CLAUDE_PROJECT_ROOT (Claude Code CLI)
+      6. Nearest .git/ ancestor of cwd
+      7. Last-used cache at ~/.config/project-brain/last-used-root.txt
+      8. Structured error listing every source tried
+
+    Steps 2-6 are delegated to `verify_tree.config.detect_host_project_root`
+    when reachable; otherwise the same chain is reimplemented inline so the
+    MCP server keeps working even if Layer-1 sources aren't on sys.path.
+
+    Returns `(root_path, error_message)`. Successful resolution sets
+    `error_message=None`. Trailing `/project-brain` is rejected with a
+    helpful hint (Path C).
+    """
+    # 1. Explicit arg wins
+    if arg and arg.strip():
+        return _validate_and_normalize(arg.strip())
+
+    # 2-6. Delegate to Layer-1 detect when available; fall back to inline chain.
+    layer1 = _try_layer1_detect()
+    if layer1 is not None:
+        return _validate_and_normalize(layer1[0])
+
+    # Inline fallback for steps 2-5 (env vars).
+    for env_var in _ROOT_ENV_VARS:
+        value = os.environ.get(env_var, "").strip()
+        if value:
+            return _validate_and_normalize(value)
+
+    # Inline fallback for step 6 (git walk-up).
+    git_root = _walk_up_for_git()
+    if git_root is not None:
+        return _validate_and_normalize(str(git_root))
+
+    # 7. Last-used cache (consulted only when nothing else matches).
+    cached = _read_root_cache()
+    if cached:
+        return _validate_and_normalize(cached)
+
+    # 8. Fail with informative error.
+    tried = "arg, " + ", ".join(_ROOT_ENV_VARS) + ", git-walk-up, last-used-cache"
+    return None, (
+        f"could not resolve project root — tried: {tried}. "
+        f"Set PROJECT_BRAIN_HOME in your MCP config's env block, or pass target=<absolute-path> "
+        f"explicitly. Server cwd: {Path.cwd()}"
+    )
 
 
 def resolve_brain_dir(arg: str | None) -> tuple[str | None, str | None]:

@@ -52,6 +52,23 @@ Claude Desktop and ChatGPT Desktop have no filesystem-project concept. UI-level 
 
 The per-host config sections below show the **chat-app pattern** explicitly (env var in the config snippet). CLI hosts that auto-detect can usually omit the `env` block from the snippet — see each host's notes.
 
+### Resolution chain
+
+When a tool needs a project root and the agent didn't pass `target` / `brain` explicitly, the server resolves it through this chain. First hit wins:
+
+1. Explicit `target` / `brain` argument from the agent's tool call.
+2. `$PROJECT_BRAIN_HOME` (the MCP-config env var — chat-app default).
+3. `$COWORK_WORKSPACE_FOLDER` (Cowork sets at session start).
+4. `$CODEX_PROJECT_ROOT` (OpenAI Codex CLI).
+5. `$CLAUDE_PROJECT_ROOT` (Claude Code CLI).
+6. The nearest ancestor of `cwd` that contains a `.git/` directory.
+7. The last-used root cached at `~/.config/project-brain/last-used-root.txt` (written automatically after the first successful `init_project_brain`).
+8. If nothing matches, the tool returns a structured `validation_error` whose hint lists every source tried.
+
+Most chat-app users only need step 2 — set `PROJECT_BRAIN_HOME` in `mcpServers.env` and never think about the rest. CLI users get steps 4/5/6 for free from their host. Cowork users get step 3 for free. The cache (step 7) means even a misconfigured env still resolves correctly once the user has run `init_project_brain` once.
+
+Each value is post-validated: a path ending in `/project-brain` is rejected with a hint that points at the parent dir (the brain itself lives at `<root>/project-brain/`, so the env should name the parent).
+
 ## Claude Desktop config
 
 Edit Claude Desktop's MCP config file and add a `project-brain` entry under `mcpServers`. The config file lives at:

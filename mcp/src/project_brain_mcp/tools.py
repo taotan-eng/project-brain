@@ -12,7 +12,13 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from ._response import err, from_subprocess_result, ok
-from ._subprocess import find_pack_root, resolve_brain_dir, resolve_project_root, run_script
+from ._subprocess import (
+    _write_root_cache,
+    find_pack_root,
+    resolve_brain_dir,
+    resolve_project_root,
+    run_script,
+)
 
 
 _KEBAB_RE = re.compile(r"[^a-z0-9]+")
@@ -30,7 +36,8 @@ def _kebab_from_leaf(leaf: str) -> str:
 
 _BRAIN_FIELD_DESC = (
     "Project root path — the directory whose project-brain/ subdir holds the brain. "
-    "Defaults to $PROJECT_BRAIN_HOME if set. The brain itself lives at <root>/project-brain/."
+    "If omitted, the server auto-detects via the resolution chain (env vars, git "
+    "walk-up, last-used cache). See INSTALL.md § 'Resolution chain' for the full order."
 )
 _BRAIN_RESOLVE_HINT = (
     "set PROJECT_BRAIN_HOME in your MCP config's env block (the project root, NOT the "
@@ -436,23 +443,19 @@ class InitProjectBrainArgs(BaseModel):
     target: str | None = Field(
         default=None,
         description=(
-            "Project root where the brain should be initialized. The brain lands "
-            "at <target>/project-brain/. **Defaults to $PROJECT_BRAIN_HOME if set** "
-            "(the configured-host case). **Do NOT prompt the user for this field** "
-            "when $PROJECT_BRAIN_HOME is configured — the env var represents the "
-            "user's pre-authorized location. Only pass an explicit target when the "
-            "user has named a different path in the current conversation."
+            "Project root for the brain. The brain lands at <target>/project-brain/. "
+            "If omitted, the server auto-detects via the resolution chain: "
+            "$PROJECT_BRAIN_HOME, $COWORK_WORKSPACE_FOLDER, $CODEX_PROJECT_ROOT, "
+            "$CLAUDE_PROJECT_ROOT, git walk-up from cwd, last-used cache. "
+            "Pass explicitly only to override."
         ),
     )
     primary_project: str | None = Field(
         default=None,
         description=(
-            "Kebab-case alias for the new brain's primary project. "
-            "**If omitted**, auto-derived from the target directory's leaf name "
-            "(e.g. target='/Users/me/Test-Brain' → primary_project='test-brain'). "
-            "**Prefer omitting this field over prompting the user** — the "
-            "auto-derivation is reliable for the common case where the user has "
-            "already chosen a meaningful project root path."
+            "Kebab-case alias for the primary project. If omitted, auto-derived "
+            "from the resolved target's leaf name (e.g. target='/Users/me/Test-Brain' "
+            "→ 'test-brain')."
         ),
     )
     owner: str | None = Field(
@@ -556,7 +559,15 @@ async def init_project_brain_impl(args: InitProjectBrainArgs) -> dict[str, Any]:
         argv.append(f"--owner={args.owner}")
     if args.force:
         argv.append("--force")
-    return from_subprocess_result(run_script("init-brain.sh", argv))
+    response = from_subprocess_result(run_script("init-brain.sh", argv))
+
+    # Cache the resolved root on successful init so future calls hit it as
+    # chain step 7 even when no env var is set. Best-effort write; failures
+    # don't propagate.
+    if response.get("ok"):
+        _write_root_cache(root)
+
+    return response
 
 
 async def promote_thread_to_tree_impl(args: PromoteThreadToTreeArgs) -> dict[str, Any]:
