@@ -46,6 +46,8 @@ Every skill in the pack reads `CONVENTIONS.md` at the brain root as its source o
 
 If you want to see what the pack does before installing, jump to [QUICKSTART.md](QUICKSTART.md) — it walks through a hiring-decision example end-to-end without requiring you to install anything.
 
+**Two operational models**: project-brain runs in two shapes depending on host. **CLI tools** (Claude Code, OpenAI Codex CLI) auto-detect the brain from `cwd` — one brain per project, no env var needed. **Chat apps** (Claude Desktop, ChatGPT Desktop) have no filesystem project concept, so the MCP config sets one canonical brain via `PROJECT_BRAIN_HOME`. Same user can run both. See [INSTALL.md § "Where the brain lives — two install models"](INSTALL.md#where-the-brain-lives--two-install-models) for the full table and per-host notes.
+
 ### Install as a Claude Code / Cowork plugin (recommended)
 
 The pack ships as a native Claude plugin. One-time setup per user, then the 14 skills are available in every project you open.
