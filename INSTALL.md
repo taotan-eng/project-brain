@@ -1,6 +1,209 @@
 # Installing the `project-brain` skill pack
 
+Two install paths, depending on how you'll use the pack:
+
+- **MCP server (Claude Desktop / Claude Code / any MCP client)** — one command, no clone. Recommended for end users. See `## Install` below.
+- **Manual pack install (development / Cowork / bash-script users)** — clone the repo, point your host runtime at it. See `## Manual pack install (development / Cowork users)` further down.
+
 This file is the **authoritative install procedure** for the pack. The steps below are numbered and deterministic so that either a human or an AI agent can follow them unambiguously. If anything in the top-level `README.md` appears to disagree with this file, **this file wins**.
+
+Tier note: works on Claude Desktop Pro and Free (config-edit path below). Max users will get a one-click Cowork marketplace install later; for now follow the Pro/Free instructions.
+
+## Install
+
+Quickest path (no virtualenv, no PATH setup):
+
+```bash
+uvx project-brain-mcp
+```
+
+`uvx` runs the server in a temporary isolated environment each time it's invoked. Install `uv` first if you don't have it: `curl -LsSf https://astral.sh/uv/install.sh | sh` (macOS / Linux) or follow the instructions at https://docs.astral.sh/uv/.
+
+Alternatives if you prefer a persistent install:
+
+```bash
+pipx install project-brain-mcp        # isolated, but on PATH
+# or
+pip install --user project-brain-mcp  # plain pip user-site install
+```
+
+All three give you a `project-brain-mcp` binary on PATH. The binary speaks MCP over stdio — point your MCP client at it.
+
+## Where the brain lives — two install models
+
+`project-brain` works in two operational shapes depending on which host you point at the MCP server. Pick the one that matches your host before reading the per-host config sections below.
+
+| Host class | Examples | Has a project root? | What `PROJECT_BRAIN_HOME` names |
+|---|---|---|---|
+| **CLI tools** | Claude Code, OpenAI Codex CLI | Yes — the cwd is the project root | Auto-detected from cwd at MCP-server launch. The brain at `<cwd>/project-brain/` is used. Per-project. |
+| **Chat apps** | Claude Desktop (Pro / Free / Max), ChatGPT Desktop (Plus) | No — chat surfaces, not IDEs | Set explicitly as an env var in the host's MCP config. Value is the **project root** (the parent of `project-brain/`), NOT the brain dir itself. One designated project for the lifetime of the app session. |
+
+**CLI tools (per-project model)**
+
+You launch `claude-code` (or `codex`) inside a repo. The MCP server is spawned per CLI session. The brain at `<cwd>/project-brain/` is detected automatically; you don't need to set `PROJECT_BRAIN_HOME`. Want the override? Pass it explicitly via the CLI tool's MCP server config or shell env before invocation — and remember the value is the project root, not the `/project-brain` subdir.
+
+**Chat apps (single-brain model)**
+
+Claude Desktop and ChatGPT Desktop have no filesystem-project concept. UI-level features like "Claude Projects" or "ChatGPT Projects" are chat containers, not directories — the MCP server can't see them. So in these hosts you pick **one canonical project root** ("my work folder") and point the MCP config at it via `PROJECT_BRAIN_HOME`. The brain at `<PROJECT_BRAIN_HOME>/project-brain/` serves resources (`brain://thread-index`, etc.) for the whole app session. Do NOT include `/project-brain` in the env value — the server appends it.
+
+**Multi-brain workflows in chat apps** — for routine multi-brain use, the **recommended pattern is multiple `mcpServers` entries**, one per brain. See § "Multi-brain setup (chat apps)" below. For one-off cross-brain operations, MCP tools also accept `brain` as a per-call argument so an agent can pass `brain=<other-path>` to operate on a non-default brain without reconfiguring; the env-set brain stays the default and the only one visible to MCP resources.
+
+**Same user, multiple hosts**: it's normal to have **both**. A developer typically runs Claude Code per-repo (per-project brains, auto-detected) AND has Claude Desktop pointing at their canonical "main brain" via the config. Each host gets its own MCP server instance with its own `PROJECT_BRAIN_HOME`. They don't interfere.
+
+The per-host config sections below show the **chat-app pattern** explicitly (env var in the config snippet). CLI hosts that auto-detect can usually omit the `env` block from the snippet — see each host's notes.
+
+### Resolution chain
+
+When a tool needs a project root and the agent didn't pass `target` / `brain` explicitly, the server resolves it through this chain. First hit wins:
+
+1. Explicit `target` / `brain` argument from the agent's tool call.
+2. `$PROJECT_BRAIN_HOME` (the MCP-config env var — chat-app default).
+3. `$COWORK_WORKSPACE_FOLDER` (Cowork sets at session start).
+4. `$CODEX_PROJECT_ROOT` (OpenAI Codex CLI).
+5. `$CLAUDE_PROJECT_ROOT` (Claude Code CLI).
+6. The nearest ancestor of `cwd` that contains a `.git/` directory.
+7. The last-used root cached at `~/.config/project-brain/last-used-root.txt` (written automatically after the first successful `init_project_brain`).
+8. If nothing matches, the tool returns a structured `validation_error` whose hint lists every source tried.
+
+Most chat-app users only need step 2 — set `PROJECT_BRAIN_HOME` in `mcpServers.env` and never think about the rest. CLI users get steps 4/5/6 for free from their host. Cowork users get step 3 for free. The cache (step 7) means even a misconfigured env still resolves correctly once the user has run `init_project_brain` once.
+
+Each value is post-validated: a path ending in `/project-brain` is rejected with a hint that points at the parent dir (the brain itself lives at `<root>/project-brain/`, so the env should name the parent).
+
+## Claude Desktop config
+
+Edit Claude Desktop's MCP config file and add a `project-brain` entry under `mcpServers`. The config file lives at:
+
+- **macOS:** `~/Library/Application Support/Claude/claude_desktop_config.json`
+- **Windows:** `%APPDATA%\Claude\claude_desktop_config.json`
+- **Linux:** `~/.config/Claude/claude_desktop_config.json`
+
+Paste in this snippet (merge into your existing `mcpServers` if you already have one):
+
+```json
+{
+  "mcpServers": {
+    "project-brain": {
+      "command": "uvx",
+      "args": ["project-brain-mcp"],
+      "env": {
+        "PROJECT_BRAIN_HOME": "/absolute/path/to/your/project-root"
+      }
+    }
+  }
+}
+```
+
+`PROJECT_BRAIN_HOME` tells the server where your **project root** lives. The brain itself sits at `<root>/project-brain/`. The MCP server appends the `/project-brain` suffix automatically — do NOT include it in the env value. If you don't have a brain yet, set `PROJECT_BRAIN_HOME` to the directory where you want one and ask the agent to run `init_project_brain` — it'll create `<root>/project-brain/` for you.
+
+If you installed via pipx or pip-user instead of uvx, change `"command": "uvx"` to `"command": "project-brain-mcp"` and drop the `"args"` line.
+
+After editing the config, fully quit and re-launch Claude Desktop. The MCP server is loaded at app startup; live reload does not pick it up.
+
+## Multi-brain setup (chat apps)
+
+If you maintain more than one brain — for example, a `work` brain and a `personal` brain, or one brain per major project — and you want them all available from a single chat app session, the **recommended pattern is multiple `mcpServers` entries**, one per brain. The same MCP server binary runs as multiple processes under distinct names, each with its own `PROJECT_BRAIN_HOME`.
+
+This is the cleanest UX for routine multi-brain use because each brain gets its own clean namespace for tools AND its own resources (`brain://thread-index`, etc.). The agent sees clearly which brain it's operating on, and resources don't collide.
+
+**Config snippet — Claude Desktop with two brains:**
+
+```json
+{
+  "mcpServers": {
+    "project-brain-work": {
+      "command": "uvx",
+      "args": ["project-brain-mcp"],
+      "env": {
+        "PROJECT_BRAIN_HOME": "/Users/you/work"
+      }
+    },
+    "project-brain-personal": {
+      "command": "uvx",
+      "args": ["project-brain-mcp"],
+      "env": {
+        "PROJECT_BRAIN_HOME": "/Users/you/personal"
+      }
+    }
+  }
+}
+```
+
+Add as many entries as you have brains. Each must have a **unique server name** (the JSON key — here `project-brain-work` vs `project-brain-personal`). The `PROJECT_BRAIN_HOME` values are absolute paths to each **project root** (NOT the `project-brain/` subdir — the server appends that automatically). For each entry, the brain on disk is at `<PROJECT_BRAIN_HOME>/project-brain/`.
+
+**How the agent picks the right brain.** Claude Desktop (and most MCP-capable chat apps) namespace tools by server name in the form `mcp__<server-name>__<tool-name>`. So the agent sees two distinct tool surfaces: `mcp__project-brain-work__new_thread` and `mcp__project-brain-personal__new_thread`. When you say "create a thread in my work brain," the agent calls the work-server tool; "in my personal brain" → the personal-server tool. The naming is descriptive enough that the picking is reliable.
+
+**Resources per brain.** Each MCP server exposes its own `brain://thread-index`, `brain://current-state`, `brain://CONVENTIONS`. The full URIs become `mcp://project-brain-work/brain://thread-index` and `mcp://project-brain-personal/brain://thread-index` in the host's resource browser. Resources are silo'd — there's no cross-brain leak.
+
+**Trade-offs:**
+
+- **RAM cost**: each server is ~30 MB resident. Five brains = roughly 150 MB while Claude Desktop is running. Negligible on modern machines.
+- **Tool-name verbosity**: in the agent's tool list, names get longer. Not a UX problem in practice because the agent's tool selection is based on intent matching, not name length.
+- **Setup effort**: one-time edit of the JSON file. No per-brain code.
+- **Brain count practical ceiling**: ~10 brains. Beyond that, a registry-based approach (planned for v1.1) would be cleaner.
+
+**Naming convention.** Use `project-brain-<short-alias>` for each entry. Short aliases (`work`, `personal`, `research`, `client-a`) work better than verbose ones because the agent often surfaces the server name in dialogue and shorter is clearer. Avoid spaces and special characters in the alias.
+
+**When NOT to use multi-server:**
+
+- You have only one brain — use the single-`project-brain` entry from § "Claude Desktop config" above.
+- You only occasionally need to cross brains — use the per-call `brain=<path>` argument on tools instead. The default-brain server handles the majority of calls; the override handles the exception. Lower overhead than running N servers.
+- You're working in a CLI host (Claude Code, Codex CLI) — those auto-detect per-project brains by cwd. Don't multi-config them; just `cd` into different repos.
+
+**Apply the same pattern to ChatGPT Desktop** (week-2 work). Once `## ChatGPT Desktop config` lands, the multi-server pattern transfers verbatim — only the config file path differs.
+
+## Verify
+
+Three steps to confirm the install is working. Each is independent — if step 1 passes, the rest will too.
+
+1. **Confirm the package imports.** Run from a terminal:
+
+    ```bash
+    python3 -c "import project_brain_mcp; print(project_brain_mcp.__version__)"
+    ```
+
+    Expected output: `0.1.0` (or whatever version you installed). A `ModuleNotFoundError` here means the install didn't land in the Python path Claude Desktop will use; check `which python3` and `which project-brain-mcp`.
+
+2. **Initialize a brain (only if you don't have one yet).** Open a new chat in Claude Desktop and prompt — that's the entire user input:
+
+    > init project brain
+
+    The agent calls `init_project_brain` with zero arguments. The server resolves the target via the resolution chain (PROJECT_BRAIN_HOME wins for chat apps; see § "Resolution chain") and derives the primary-project alias as kebab-case of the resolved root's leaf. After it reports success, check the filesystem:
+
+    ```bash
+    ls "$PROJECT_BRAIN_HOME/project-brain/"
+    ```
+
+    Expected: `CONVENTIONS.md`, `config.yaml`, `thread-index.md`, `current-state.md`, `threads/`, `tree/`, `archive/`. If `init_project_brain` reports a `validation_error` with "Brain already exists", a brain is already scaffolded at the resolved location — skip this step.
+
+3. **Ask the agent to list your threads.** Open a new chat in Claude Desktop and prompt:
+
+    > List my threads.
+
+    The agent should call the `list_threads` tool with no `brain` argument and show whatever threads exist under `$PROJECT_BRAIN_HOME/project-brain/threads/`. The server reads `PROJECT_BRAIN_HOME` from the MCP config's `env` block; you don't need to tell the agent where the brain is. An empty list against a fresh brain is still a successful call.
+
+4. **Ask the agent to create a thread.** In the same chat (no path needed — the server uses `$PROJECT_BRAIN_HOME` automatically):
+
+    > Create a thread called "install test" with purpose "verifying the MCP install."
+
+    Same pattern — no path in the prompt, no `brain` argument needed. The agent calls `new_thread` with just the slug / title / purpose; the server resolves the brain to `<$PROJECT_BRAIN_HOME>/project-brain/`. After it reports success, check the filesystem:
+
+    ```bash
+    ls "$PROJECT_BRAIN_HOME/project-brain/threads/install-test/"
+    ```
+
+    Expected: `thread.md`, `decisions-candidates.md`, `open-questions.md`. If those files are there, the roundtrip works end-to-end.
+
+If any step fails, check `~/Library/Logs/Claude/mcp.log` (macOS) or the equivalent on your OS for server-side errors. Common issues:
+
+- `PROJECT_BRAIN_HOME` not set or points at a non-existent path — fix the config and restart.
+- `uvx` not on Claude Desktop's PATH — Claude Desktop inherits PATH from your login shell at launch time; if you installed uv in a non-default location, give the full path in `"command"`.
+- The brain directory is missing required files — run the `init_project_brain` tool against an empty target dir to scaffold one.
+
+---
+
+## Manual pack install (development / Cowork users)
+
+The rest of this file documents the legacy manual install — cloning the repo into a host runtime that loads bash scripts and SKILL.md prompts directly (Cowork, raw Claude Code with on-disk plugins, etc.). For most v1.0 end users the MCP server path above is simpler. Keep reading only if you're developing the pack or running it on a host without MCP support.
 
 ## Prerequisites
 

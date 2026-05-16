@@ -1449,5 +1449,49 @@ class DiscoverThreadsTests(BaseTest):
         self.assertIn("mutually exclusive", r.stderr)
 
 
+class YamlMiniTests(unittest.TestCase):
+    """Regression coverage for the vendored mini YAML parser.
+
+    The fallback parser used to be invoked via PyYAML-absent systems and
+    surfaced a real bug: double-quoted scalars containing non-ASCII bytes
+    (em-dash, CJK, emoji) were corrupted by an `encode("utf-8").decode(
+    "unicode_escape")` roundtrip that interpreted high bytes as Latin-1.
+    The fix processes escape sequences character-by-character. These tests
+    pin the contract so the regression doesn't recur.
+    """
+
+    def setUp(self):
+        from verify_tree import _yaml_mini
+        self.yaml_mini = _yaml_mini
+
+    def test_double_quoted_preserves_em_dash(self):
+        data = self.yaml_mini.safe_load('title: "Recommended pitch — V1 with V3 follow-up"')
+        self.assertEqual(data["title"], "Recommended pitch — V1 with V3 follow-up")
+
+    def test_double_quoted_preserves_cjk(self):
+        data = self.yaml_mini.safe_load('title: "中文标题 测试"')
+        self.assertEqual(data["title"], "中文标题 测试")
+
+    def test_double_quoted_preserves_emoji(self):
+        data = self.yaml_mini.safe_load('title: "Release 🎉 emoji 🚀"')
+        self.assertEqual(data["title"], "Release 🎉 emoji 🚀")
+
+    def test_double_quoted_escape_sequences_still_work(self):
+        # \n, \t, \\, \"
+        data = self.yaml_mini.safe_load('title: "line\\nbreak\\twith\\"quote\\"and\\\\slash"')
+        self.assertEqual(data["title"], 'line\nbreak\twith"quote"and\\slash')
+
+    def test_double_quoted_unknown_escape_kept_verbatim(self):
+        # Unknown escape sequences pass through (graceful fallback).
+        data = self.yaml_mini.safe_load(r'title: "literal \z sequence"')
+        self.assertEqual(data["title"], r"literal \z sequence")
+
+    def test_single_quoted_unchanged_by_unicode(self):
+        # Single-quoted scalars are literal; this was never affected, but
+        # we pin it so future regressions in the single-quote path are caught.
+        data = self.yaml_mini.safe_load("title: 'Recommended — em-dash and 中文'")
+        self.assertEqual(data["title"], "Recommended — em-dash and 中文")
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

@@ -33,7 +33,7 @@ The skill is split across three commits on the promote branch, in this order: **
 | `branch_suffix`    | user prompt                         | no       | Extra suffix for split promotions (e.g. `runtime-contract`). Nullable. See § 11.4.       |
 | `wave_number`      | derived                             | no       | If the thread has prior entries in `tree_prs`, computed as the next integer. Else 1.     |
 
-Prompt strategy: one `AskUserQuestion` call collects `leaves` (multi-select from candidate list) + `base_branch` (free-text with `default_base` as the preview value) + `target_remote` (only if multi-remote). `branch_suffix` and `wave_number` are asked only if the common-case defaults don't apply.
+Prompt strategy: one user prompt collects `leaves` (multi-select from candidate list) + `base_branch` (free-text with `default_base` as the preview value) + `target_remote` (only if multi-remote). `branch_suffix` and `wave_number` are asked only if the common-case defaults don't apply.
 
 ## Flags
 
@@ -61,9 +61,9 @@ The skill **refuses** if any of these are not met.
 
 > ### ⛔️ HARD CONSTRAINT — STEP 0: ASK THE USER FIRST. ALWAYS.
 >
-> **The very first thing this skill does is invoke `AskUserQuestion` for the destination tree domain.** Not after staging. Not after mode dispatch. Not after probing config. Step 0, before any other tool call. The user's verbatim answer is the only valid source for the domain — period.
+> **The very first thing this skill does is ask the user for the destination tree domain** — via the host's interaction surface, whatever that is (single-choice from existing folders plus an "other" free-text option). Not after staging. Not after mode dispatch. Not after probing config. Step 0, before any other tool call. The user's verbatim answer is the only valid source for the domain — period.
 >
-> **Phrasing of the AskUserQuestion** (use exactly this):
+> **Phrasing of the prompt** (use exactly this):
 >
 > > "What folder under `tree/` should this leaf land in? Pick an existing one, or name a new one — the taxonomy is yours."
 >
@@ -77,20 +77,21 @@ The skill **refuses** if any of these are not met.
 >   - Prior `promoted_to` entries on this thread — agent extrapolates pattern.
 >   - Thread content topic — "this thread is about hardware → `engineering/`".
 >   - Prior conversation turns — "the user said `engineering` last week."
->   - Anything else you can derive without invoking `AskUserQuestion` THIS TURN.
+>   - Anything else you can derive without asking the user THIS TURN.
 >
-> **Only valid value source:** the user's answer to `AskUserQuestion`, in this turn, captured as a string and passed verbatim through every downstream step (staging path, `--allow-domain` flag, leaf frontmatter `domain` field).
+> **Only valid value source:** the user's direct answer to your prompt, in this turn, captured as a string and passed verbatim through every downstream step (staging path, `--allow-domain` flag, leaf frontmatter `domain` field).
 >
-> Backstop: `promote-local.sh` refuses to run unless `--allow-domain=<X>` is passed and matches the staged path's top-level. The error message does not document a workaround — if you arrive at the refusal without having invoked `AskUserQuestion` in this turn, the only recovery is to invoke it now and re-run with the user's answer.
+> Backstop: `promote-local.sh` refuses to run unless `--allow-domain=<X>` is passed and matches the staged path's top-level. The error message does not document a workaround — if you arrive at the refusal without having asked the user in this turn, the only recovery is to ask now and re-run with the user's answer.
 
 ### Step 0 — ASK THE USER (mandatory, unconditional, before anything else)
 
 ```
 ls project-brain/tree/                     # gather existing folders for the question
-AskUserQuestion(
+ask_user(
   question = "What folder under `tree/` should this leaf land in? "
              "Pick an existing one, or name a new one — the taxonomy is yours.",
-  options  = [<existing folders from ls>, "other (type one)"]
+  options  = [<existing folders from ls>, "other (type one)"],
+  shape    = single-choice with free-text fallback
 )
 ```
 
@@ -113,7 +114,7 @@ Promotion supports four modes (CONVENTIONS § 4.2):
 2. Else read `<brain>/config.yaml` for `promote_mode_default`. If set, use it.
 3. Else probe git + gh readiness silently (all pure reads, no mutation): `git rev-parse --is-inside-work-tree`, `git config user.email`, `git remote get-url origin`, `gh auth status`.
 4. If all four probes succeed → auto-default to `git:pr` (no prompt; print a note).
-5. If any probe fails → present **one** `AskUserQuestion` with three options:
+5. If any probe fails → ask the user to choose between three options (single-choice):
 
    - **Stay local** (default): "Promote decisions into `tree/` as files. No git, no PR. You can set up git later."
    - **Set up git**: print the exact commands the user should run (`git config --global user.email ...`, `gh auth login`, etc.), then exit without promoting. User re-invokes after setup.
@@ -126,7 +127,7 @@ Promotion supports four modes (CONVENTIONS § 4.2):
 For `--mode=local`, invoke the one-shot script:
 
 ```bash
-"${CLAUDE_PLUGIN_ROOT}/scripts/promote-local.sh" \
+"${PROJECT_BRAIN_PACK_ROOT}/scripts/promote-local.sh" \
   --brain=<absolute brain path> \
   --slug=<thread_slug>          \
   [--leaves=<csv>]              \  # subset of staged leaves; omit for all
@@ -151,7 +152,7 @@ For `git:pr`, `git:branch`, `git:manual` — these orchestrate git commands dire
 
 Before any mode can land leaves into `tree/`, the leaves have to exist at `threads/<slug>/tree-staging/<domain>/<leaf>.md`. In rc4 the LLM does this step directly from `decisions-candidates.md`:
 
-1. Read the thread's `decisions-candidates.md`. Present `locking` entries to the user via `AskUserQuestion` for selection (or accept `--leaves=<csv>` verbatim).
+1. Read the thread's `decisions-candidates.md`. Present `locking` entries to the user for multi-select selection (or accept `--leaves=<csv>` verbatim).
 2. For each selected leaf, instantiate `assets/leaf-template.md` into `tree-staging/<domain>/<leaf-slug>.md` with: `status: draft`, `domain: <domain>`, `source_thread: <slug>`, `owner: <actor>`, plus H1/Context/Decision/Consequences body drawn from the candidate entry.
 3. Run `verify-tree --path=threads/<slug>/tree-staging/` to catch frontmatter issues before landing.
 
@@ -194,7 +195,7 @@ After staging, dispatch on mode as above.
 
     Skip this step entirely with `--skip-readiness-check` (expert mode — the preconditions in § 2 will still enforce the same requirements but without the friendly summary).
 
-1. **Resolve inputs.** Infer `thread_slug` from cwd if possible. Read `decisions-candidates.md`, present `locking` entries to the user via `AskUserQuestion` for leaf selection. Read `~/.config/project-brain/projects.yaml` and resolve `target_remote`. Prompt for `base_branch` with the resolved remote's `default_base` as the preview value.
+1. **Resolve inputs.** Infer `thread_slug` from cwd if possible. Read `decisions-candidates.md`, ask the user to multi-select from the `locking` entries for leaf selection. Read `~/.config/project-brain/projects.yaml` and resolve `target_remote`. Prompt for `base_branch` with the resolved remote's `default_base` as the preview value.
 2. **Validate preconditions.** Run checks 1–9 above. On any failure, stop and report the specific precondition.
 3. **Stage leaves (commit 1 of 3).** For each selected leaf:
    - Copy `assets/leaf-template.md` into `project-brain/threads/[thread_slug]/tree-staging/[domain]/[leaf-slug].md`.

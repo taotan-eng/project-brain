@@ -46,7 +46,7 @@ The day's work is merge-ready when all eight criteria below pass. Each is checke
 
 | # | Criterion | Programmatic check |
 |---|---|---|
-| 1 | `LICENSE` at repo root, Apache 2.0 canonical structure | `head -3 LICENSE` starts `Apache License / Version 2.0, January 2004`; `tail -3 LICENSE` contains `END OF TERMS AND CONDITIONS`; size > 10 KB |
+| 1 | `LICENSE` at repo root, Apache 2.0 canonical structure | `head -3 LICENSE` starts `Apache License / Version 2.0, January 2004`; whole-file `grep` finds `END OF TERMS AND CONDITIONS` (the marker sits at ~line 169 of 194 because the APPENDIX trails it, so `tail` checks do not work); size > 10 KB |
 | 2 | `NOTICE` at repo root, references project + license | `head -1 NOTICE` contains `project-brain`; body contains `Apache License, Version 2.0`; size > 400 B |
 | 3 | Skill renamed end-to-end on disk | `skills/list-threads/` exists; `scripts/list-threads.sh` exists; `skills/discover-threads/` and `scripts/discover-threads.sh` absent |
 | 4 | No live references to old skill name | `git grep "discover-threads"` returns no matches outside `CHANGELOG.md` and `.git/` |
@@ -166,8 +166,11 @@ test -f NOTICE  || { echo "FAIL: NOTICE missing"; exit 1; }
 
 head -3 LICENSE | grep -q "Apache License" \
   || { echo "FAIL: LICENSE doesn't look like Apache 2.0"; head -5 LICENSE; exit 1; }
-tail -3 LICENSE | grep -q "END OF TERMS AND CONDITIONS" \
-  || { echo "FAIL: LICENSE missing canonical end marker"; tail -5 LICENSE; exit 1; }
+# Canonical Apache 2.0 places APPENDIX ("How to apply the Apache License to
+# your work") AFTER the END OF TERMS marker, so the marker is around line
+# 169 of 194 — not in the last 3 lines. Use a whole-file grep.
+grep -q "END OF TERMS AND CONDITIONS" LICENSE \
+  || { echo "FAIL: LICENSE missing canonical end marker"; exit 1; }
 
 head -1 NOTICE | grep -q "project-brain" \
   || { echo "FAIL: NOTICE missing project name"; head -3 NOTICE; exit 1; }
@@ -477,12 +480,14 @@ TIMESTAMP=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 declare -a ROWS=()
 
 # Criterion 1 — LICENSE
+# Canonical Apache 2.0: APPENDIX trails the END OF TERMS marker, so the
+# marker is mid-file (~line 169 of 194), NOT in tail -3. Use whole-file grep.
 if [ -f LICENSE ] \
    && head -3 LICENSE | grep -q "Apache License" \
-   && tail -3 LICENSE | grep -q "END OF TERMS AND CONDITIONS" \
+   && grep -q "END OF TERMS AND CONDITIONS" LICENSE \
    && [ "$(wc -c < LICENSE | tr -d ' ')" -gt 10000 ]; then
   S=$(wc -c < LICENSE | tr -d ' ')
-  ROWS+=("| 1 | Apache 2.0 LICENSE present | ✓ | ${S} bytes; head + tail match canonical |")
+  ROWS+=("| 1 | Apache 2.0 LICENSE present | ✓ | ${S} bytes; head matches Apache 2.0; canonical end marker present |")
 else
   ROWS+=("| 1 | Apache 2.0 LICENSE present | ✗ | missing or malformed |")
   PASS=0

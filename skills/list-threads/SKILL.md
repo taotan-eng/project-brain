@@ -73,7 +73,7 @@ The skill **refuses** if any of these are not met.
 
 > ### ⛔️ HARD CONSTRAINT — ONE TOOL CALL + VERBATIM ECHO AS MARKDOWN
 >
-> **Call `${CLAUDE_PLUGIN_ROOT}/scripts/list-threads.sh` ONCE.** No `Read` of thread.md files, no manual frontmatter parsing, no `glob` walks. The script enumerates threads, parses frontmatter, applies filters, sorts, and renders the result.
+> **Call `${PROJECT_BRAIN_PACK_ROOT}/scripts/list-threads.sh` ONCE.** No `Read` of thread.md files, no manual frontmatter parsing, no `glob` walks. The script enumerates threads, parses frontmatter, applies filters, sorts, and renders the result.
 >
 > **After the bash call returns, paste the script's stdout into your assistant message in full as Markdown — do NOT wrap it in a fenced code block.** In `--format=table` (default) the output is a Markdown table whose `slug` cells are clickable `file://` links to the thread.md; in `--format=json|csv|yaml|paths` the output is plain text. Either way, do not summarize and do not rely on the Bash tool's result card — it collapses by default. An empty (or fenced) assistant message means the user sees only "Ran a command >" with no detail.
 >
@@ -89,7 +89,7 @@ The skill **refuses** if any of these are not met.
 **One call:**
 
 ```bash
-"${CLAUDE_PLUGIN_ROOT}/scripts/list-threads.sh" \
+"${PROJECT_BRAIN_PACK_ROOT}/scripts/list-threads.sh" \
   --brain=<absolute brain path> \
   [--status=<csv>]              \    # active,parked,in-review,archived (default excludes archived)
   [--owner=<substring>]         \    # case-insensitive substring on owner

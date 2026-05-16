@@ -50,14 +50,14 @@ The skill **refuses** if any of these are not met.
 
 > ### ⛔️ HARD CONSTRAINT — ONE TOOL CALL
 >
-> **Call `${CLAUDE_PLUGIN_ROOT}/scripts/discard-thread.sh` ONCE.** No `Read` of thread.md, no pre-check of `tree_prs`, no `mv`, no `Edit` of frontmatter. The script reads frontmatter, validates preconditions (including `tree_prs` empty), flips status, moves the dir to archive/, rebuilds indexes. React to its exit code, not to pre-checks.
+> **Call `${PROJECT_BRAIN_PACK_ROOT}/scripts/discard-thread.sh` ONCE.** No `Read` of thread.md, no pre-check of `tree_prs`, no `mv`, no `Edit` of frontmatter. The script reads frontmatter, validates preconditions (including `tree_prs` empty), flips status, moves the dir to archive/, rebuilds indexes. React to its exit code, not to pre-checks.
 >
-> **Derive `--reason` from context.** The user likely already said WHY they're discarding ("this approach didn't pan out", "dupe of X"). Use that as the reason. Only ask via `AskUserQuestion` if the message gives no reason at all.
+> **Derive `--reason` from context.** The user likely already said WHY they're discarding ("this approach didn't pan out", "dupe of X"). Use that as the reason. Only prompt the user if the message gives no reason at all.
 
 **One call:**
 
 ```bash
-"${CLAUDE_PLUGIN_ROOT}/scripts/discard-thread.sh" \
+"${PROJECT_BRAIN_PACK_ROOT}/scripts/discard-thread.sh" \
   --brain=<absolute brain path> \
   --slug=<thread_slug>          \
   --reason='<derived or asked>' \

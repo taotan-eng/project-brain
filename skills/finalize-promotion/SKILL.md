@@ -33,7 +33,7 @@ The skill intentionally does not trigger on its own. There is no git hook, no CI
 | `merge_commit`      | derived from `gh pr view`       | yes      | SHA of the merge commit on the PR's base branch. Used for the audit trail; not stored in frontmatter. |
 | `--brain=<path>`    | user prompt or cwd inference    | no       | Absolute path to the brain root. Defaults to the nearest ancestor `project-brain/` directory.        |
 
-Prompt strategy: infer `thread_slug` from cwd; infer `pr_url` from `tree_prs[last]` when there's only one unfinalized. Ask `disposition` via a single `AskUserQuestion` with two options ("Keep thread active — more to promote" / "Archive thread — this was the last wave"). Default-preview `archive` if `decisions-candidates.md` has no remaining `locking` entries, otherwise default-preview `continue`.
+Prompt strategy: infer `thread_slug` from cwd; infer `pr_url` from `tree_prs[last]` when there's only one unfinalized. Ask the user to choose `disposition` between two options ("Keep thread active — more to promote" / "Archive thread — this was the last wave"). Default-preview `archive` if `decisions-candidates.md` has no remaining `locking` entries, otherwise default-preview `continue`.
 
 | `--dry-run`       | boolean                         | no       | Print the plan (leaf status flips, promoted_to/promoted_at appends, disposition, commit message) without performing any file writes, git mutations, or audit-log writes. See Process § Dry-run semantics. |
 

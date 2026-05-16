@@ -43,14 +43,14 @@ The skill **refuses** if any are not met:
 
 > ### ⛔️ HARD CONSTRAINT — ONE TOOL CALL
 >
-> **Call `${CLAUDE_PLUGIN_ROOT}/scripts/restore-thread.sh` ONCE.** No `Read` of thread.md, no manual `mv`, no manual frontmatter edit. The script reads, validates, mutates, moves, rebuilds — all atomic.
+> **Call `${PROJECT_BRAIN_PACK_ROOT}/scripts/restore-thread.sh` ONCE.** No `Read` of thread.md, no manual `mv`, no manual frontmatter edit. The script reads, validates, mutates, moves, rebuilds — all atomic.
 >
-> **Derive `--reason` from context** when the user provided one ("I want to bring X back because Y" → `--reason='Y'`). Use `AskUserQuestion` only if the user gave no rationale and you genuinely don't know — but for a restore the rationale is usually optional anyway.
+> **Derive `--reason` from context** when the user provided one ("I want to bring X back because Y" → `--reason='Y'`). Only prompt the user if no rationale was given and you genuinely don't know — but for a restore the rationale is usually optional anyway.
 
 **One call:**
 
 ```bash
-"${CLAUDE_PLUGIN_ROOT}/scripts/restore-thread.sh" \
+"${PROJECT_BRAIN_PACK_ROOT}/scripts/restore-thread.sh" \
   --brain=<absolute brain path> \
   --slug=<thread-slug>          \
   [--maturity=refining]         \  # default; pass exploring or locking if known
