@@ -1,6 +1,6 @@
 # Day-6 Evaluation Report
 
-- Generated: 2026-05-16T15:08:14Z
+- Generated: 2026-05-16T23:54:56Z
 - Plan reference: `project-brain/threads/project-brain-cross-harness/artifacts/0003-v1.0-implementation-plan-(3-week-compressed).md` § 4 (week 2 day 1)
 - Handoff: `docs/handoff/day-06-chatgpt-codex-config.md`
 - Predecessor: day-05 (merged to main via PR #5, commit 48b3eb4)
@@ -28,7 +28,7 @@ Codex CLI ships native MCP over stdio. Config at `~/.codex/config.toml` in TOML 
 |---|---|---|---|
 | 1 | ChatGPT Desktop config section | ✓ | section present with mcpServers mention + uvx command. Documents the local-stdio->remote-HTTP bridge (mcp-remote) that ChatGPT requires; tier note (Plus/Pro/Team/Enterprise; Free excluded). |
 | 2 | OpenAI Codex CLI config section | ✓ | section present in READY shape (matches research-note recommendation READY). TOML config at ~/.codex/config.toml with full uvx + PROJECT_BRAIN_HOME snippet. |
-| 3 | compat-matrix.md with >=5 data rows | ✓ | 8 table rows (1 header + 6 data: Claude Code, Claude Desktop Pro, Claude Desktop Free, ChatGPT Plus+, ChatGPT Free, Codex CLI) |
+| 3 | compat-matrix.md with >=5 data rows | ✓ | 8 table rows (1 header + 6 data: Claude Code, Claude Desktop Pro, Claude Desktop Free, ChatGPT Plus+, ChatGPT Free, Codex CLI). Claude Desktop Free row downgraded from `yes` to `pending` in the day-6-cleanup commit — Pro was validated on day-5; Free was inferred but never demo'd. |
 | 4 | Day-5 Claude content unchanged (additive only) | ✓ | 0 deletions vs main (<=5 tolerated for minor edits); ChatGPT and Codex sections added between Claude Desktop config and Multi-brain setup |
 | 5 | Codex research note | ✓ | docs/notes/day-06-codex-mcp-support.md present with Summary + Findings (4 subsections) + Recommendation (READY) |
 | 6 | No regression (validator + smoke + no Cowork) | ✓ | validator: 0 errors, 0 warnings (44 artifacts walked).; smoke: PASS; cowork refs in skills/: 0 |
@@ -47,6 +47,7 @@ Codex CLI ships native MCP over stdio. Config at `~/.codex/config.toml` in TOML 
 ## Commits (this branch)
 
 ```
+  e2c39de docs(compat): downgrade Claude Desktop Free row to pending
   a2624aa docs: scaffold compat-matrix.md at repo root
   51c30dd docs(install): add ChatGPT Desktop config section
   5693d1f docs(research): document current Codex CLI MCP support status
