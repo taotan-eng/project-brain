@@ -163,13 +163,25 @@ Three steps to confirm the install is working. Each is independent — if step 1
 
     Expected output: `0.1.0` (or whatever version you installed). A `ModuleNotFoundError` here means the install didn't land in the Python path Claude Desktop will use; check `which python3` and `which project-brain-mcp`.
 
-2. **Ask the agent to list your threads.** Open a new chat in Claude Desktop and prompt:
+2. **Initialize a brain (only if you don't have one yet).** Open a new chat in Claude Desktop and prompt — that's the entire user input:
+
+    > init project brain
+
+    The agent calls `init_project_brain` with zero arguments. The server resolves the target via the resolution chain (PROJECT_BRAIN_HOME wins for chat apps; see § "Resolution chain") and derives the primary-project alias as kebab-case of the resolved root's leaf. After it reports success, check the filesystem:
+
+    ```bash
+    ls "$PROJECT_BRAIN_HOME/project-brain/"
+    ```
+
+    Expected: `CONVENTIONS.md`, `config.yaml`, `thread-index.md`, `current-state.md`, `threads/`, `tree/`, `archive/`. If `init_project_brain` reports a `validation_error` with "Brain already exists", a brain is already scaffolded at the resolved location — skip this step.
+
+3. **Ask the agent to list your threads.** Open a new chat in Claude Desktop and prompt:
 
     > List my threads.
 
-    The agent should call the `list_threads` tool with no `brain` argument and show whatever threads exist under `$PROJECT_BRAIN_HOME/threads/`. The server reads `PROJECT_BRAIN_HOME` from the MCP config's `env` block; you don't need to tell the agent where the brain is. An empty list against a fresh brain is still a successful call.
+    The agent should call the `list_threads` tool with no `brain` argument and show whatever threads exist under `$PROJECT_BRAIN_HOME/project-brain/threads/`. The server reads `PROJECT_BRAIN_HOME` from the MCP config's `env` block; you don't need to tell the agent where the brain is. An empty list against a fresh brain is still a successful call.
 
-3. **Ask the agent to create a thread.** In the same chat (no path needed — the server uses `$PROJECT_BRAIN_HOME` automatically):
+4. **Ask the agent to create a thread.** In the same chat (no path needed — the server uses `$PROJECT_BRAIN_HOME` automatically):
 
     > Create a thread called "install test" with purpose "verifying the MCP install."
 

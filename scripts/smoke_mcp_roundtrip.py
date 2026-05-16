@@ -170,10 +170,17 @@ async def _run() -> int:
                }}
         env["PROJECT_BRAIN_HOME"] = str(project_root)
 
+        # Launch the subprocess server with cwd inside the scratch tempdir
+        # (which is under /tmp and has no .git/ ancestor) so the resolution
+        # chain's step 2 (git walk-up) misses cleanly and step 3
+        # (PROJECT_BRAIN_HOME) takes precedence. Without this, the chain
+        # would resolve to the project-brain repo itself whenever the smoke
+        # test is run from inside the repo.
         params = StdioServerParameters(
             command=sys.executable,
             args=["-m", "project_brain_mcp"],
             env=env,
+            cwd=str(tmp),
         )
 
         async with stdio_client(params) as (read, write):
@@ -311,50 +318,27 @@ async def _run() -> int:
 
                 # ---- Day-5 complex tools ------------------------------------
 
-                # 10a. INIT — init_project_brain on a fresh scratch dir succeeds
-                import tempfile as _tempfile  # local import keeps top stable
-                fresh = Path(_tempfile.mkdtemp(prefix="mcp-smoke-init-"))
-                try:
-                    # Path C: target is the project root; the brain lands at
-                    # <target>/project-brain/. Passing `fresh` directly here.
-                    init_resp = await session.call_tool(
-                        "init_project_brain",
-                        arguments={
-                            "target": str(fresh),
-                            "primary_project": "init-smoke",
-                        },
-                    )
-                    init_payload = _parse_tool_payload(init_resp)
-                    # init-brain.sh may fail on this host for unrelated reasons
-                    # (registry path conflicts, etc.); we accept ok=True OR a
-                    # script_error that isn't the "existing brain" guard.
-                    if not init_payload.get("ok"):
-                        code = (init_payload.get("error") or {}).get("code")
-                        assert code == "script_error", \
-                            f"init_project_brain returned wrong error code: {init_payload!r}"
-
-                    # 10b. INIT safety guard — plant a CONVENTIONS.md inside the
-                    # would-be brain dir (planted/project-brain/CONVENTIONS.md);
-                    # without force=True we expect the structured script_error
-                    # "existing brain" refusal.
-                    planted_root = fresh / "planted-root"
-                    (planted_root / "project-brain").mkdir(parents=True, exist_ok=True)
-                    (planted_root / "project-brain" / "CONVENTIONS.md").write_text("# pre-existing\n")
-                    init_guard_resp = await session.call_tool(
-                        "init_project_brain",
-                        arguments={
-                            "target": str(planted_root),
-                            "primary_project": "guard-smoke",
-                        },
-                    )
-                    init_guard_payload = _assert_err(
-                        init_guard_resp, "script_error", "init_project_brain safety guard",
-                    )
-                    msg = (init_guard_payload.get("error") or {}).get("message", "")
-                    assert "existing brain" in msg, \
-                        f"safety-guard message should mention 'existing brain': {msg!r}"
-                finally:
-                    shutil.rmtree(fresh, ignore_errors=True)
+                # 10a. INIT via MCP session — zero-arg, hits the existence
+                # guard. The server's PROJECT_BRAIN_HOME points at the
+                # scratch project_root (set in StdioServerParameters above),
+                # which already has the scaffolded brain at
+                # <project_root>/project-brain/. The chain resolves to that
+                # root and the existence check fires immediately, returning
+                # validation_error "Brain already exists". This is the
+                # session-roundtrip version of the in-process 14c2 check.
+                init_resp = await session.call_tool(
+                    "init_project_brain",
+                    arguments={},
+                )
+                init_payload = _parse_tool_payload(init_resp)
+                assert init_payload.get("ok") is False, \
+                    f"expected existence-guard refusal, got {init_payload!r}"
+                code = (init_payload.get("error") or {}).get("code")
+                assert code == "validation_error", \
+                    f"init_project_brain wrong error code: {init_payload!r}"
+                msg = (init_payload.get("error") or {}).get("message", "")
+                assert "Brain already exists" in msg, \
+                    f"existence-guard message should mention 'Brain already exists': {msg!r}"
 
                 # 10c. PROMOTE consent gate — omit allow_domain entirely; the
                 # Pydantic required field MUST surface as validation_error
@@ -528,68 +512,78 @@ async def _run() -> int:
                 saved_env = os.environ.pop("PROJECT_BRAIN_HOME", None)
                 try:
 
-                    # 14c. PATH C + hotfix #3 — init with NO args at all.
-                    # PROJECT_BRAIN_HOME is the project root; primary_project
-                    # auto-derives from the target leaf via kebab-case. The
-                    # "create project brain" prompt should resolve cleanly
-                    # without any agent->user prompting.
+                    # 14c. ZERO-ARG INIT — call init with no args at all.
+                    # The agent simply says "create project brain"; the server
+                    # resolves the target via the chain and derives the alias
+                    # from the resolved root's leaf. chdir into the tempdir
+                    # (non-git) so chain step 2 (git walk-up) misses cleanly
+                    # and step 3 (PROJECT_BRAIN_HOME) wins.
                     import re as _re
-                    with tempfile.TemporaryDirectory(prefix="Test-Brain-") as init_env_root:
-                        os.environ["PROJECT_BRAIN_HOME"] = init_env_root
-                        init_env_resp = await init_project_brain_impl(InitProjectBrainArgs())
-                        # Layer-1 init-brain.sh may fail on this host for
-                        # unrelated reasons (registry collisions, etc.); we
-                        # accept ok=True OR a script_error that isn't the
-                        # safety guard.
-                        if init_env_resp["ok"]:
-                            created = Path(init_env_root) / "project-brain" / "CONVENTIONS.md"
-                            assert created.exists(), \
-                                f"expected brain at {created} after env-default init"
-                            # Verify the derived alias matches the leaf
-                            cfg = Path(init_env_root) / "project-brain" / "config.yaml"
-                            if cfg.exists():
-                                text = cfg.read_text()
-                                leaf = Path(init_env_root).name
-                                expected_alias = _re.sub(r"[^a-z0-9]+", "-", leaf.lower()).strip("-")
-                                assert expected_alias in text, \
-                                    f"expected auto-derived alias {expected_alias!r} not in config.yaml: {text[:300]}"
-                        else:
-                            code = init_env_resp["error"]["code"]
-                            assert code == "script_error", \
-                                f"env-default init returned wrong code: {init_env_resp!r}"
+                    from project_brain_mcp._subprocess import _PROJECT_ROOT_CACHE as _CACHE
+                    _saved_cwd_c = os.getcwd()
+                    try:
+                        with tempfile.TemporaryDirectory(prefix="Test-Brain-", dir="/tmp") as init_env_root:
+                            os.environ["PROJECT_BRAIN_HOME"] = init_env_root
+                            os.chdir(init_env_root)
+                            _CACHE.unlink(missing_ok=True)  # prevent stale cache hit
+                            init_env_resp = await init_project_brain_impl(InitProjectBrainArgs())
+                            # Layer-1 init-brain.sh may fail on this host for
+                            # unrelated reasons (registry collisions, etc.);
+                            # accept ok=True OR a script_error that isn't the
+                            # existence guard.
+                            if init_env_resp["ok"]:
+                                created = Path(init_env_root) / "project-brain" / "CONVENTIONS.md"
+                                assert created.exists(), \
+                                    f"expected brain at {created} after zero-arg init"
+                                # Verify the derived alias matches the leaf
+                                cfg = Path(init_env_root) / "project-brain" / "config.yaml"
+                                if cfg.exists():
+                                    text = cfg.read_text()
+                                    leaf = Path(init_env_root).name
+                                    expected_alias = _re.sub(r"[^a-z0-9]+", "-", leaf.lower()).strip("-")
+                                    assert expected_alias in text, \
+                                        f"expected auto-derived alias {expected_alias!r} not in config.yaml: {text[:300]}"
 
-                    # 14c2. Explicit primary_project still overrides derivation.
-                    with tempfile.TemporaryDirectory(prefix="mcp-smoke-explicit-") as explicit_root:
-                        os.environ["PROJECT_BRAIN_HOME"] = explicit_root
-                        explicit_resp = await init_project_brain_impl(
-                            InitProjectBrainArgs(primary_project="my-explicit-alias"),
-                        )
-                        if explicit_resp["ok"]:
-                            cfg = Path(explicit_root) / "project-brain" / "config.yaml"
-                            if cfg.exists():
-                                text = cfg.read_text()
-                                assert "my-explicit-alias" in text, \
-                                    f"explicit primary_project not honored: {text[:300]}"
-                        else:
-                            code = explicit_resp["error"]["code"]
-                            assert code == "script_error", \
-                                f"explicit-alias init returned wrong code: {explicit_resp!r}"
+                                # 14c2. EXISTENCE-CHECK NEGATIVE — init again
+                                # against the same resolved root; expect
+                                # validation_error with "Brain already exists".
+                                # No force path, so this is a hard error the
+                                # user resolves in the filesystem.
+                                second_resp = await init_project_brain_impl(InitProjectBrainArgs())
+                                assert second_resp["ok"] is False, \
+                                    f"repeat init should refuse, got {second_resp!r}"
+                                assert second_resp["error"]["code"] == "validation_error", \
+                                    f"repeat init wrong code: {second_resp!r}"
+                                assert "Brain already exists" in second_resp["error"]["message"], \
+                                    f"repeat init wrong msg: {second_resp['error']['message']!r}"
+                            else:
+                                code = init_env_resp["error"]["code"]
+                                assert code == "script_error", \
+                                    f"zero-arg init returned wrong code: {init_env_resp!r}"
+                    finally:
+                        os.chdir(_saved_cwd_c)
 
                     # 14d. PATH C — reject PROJECT_BRAIN_HOME ending in
-                    # /project-brain (the old semantic). Everyday tools must
-                    # return validation_error with a hint pointing at the
-                    # corrected parent path.
-                    os.environ["PROJECT_BRAIN_HOME"] = "/tmp/something/project-brain"
-                    bad_env_resp = await list_threads_impl(ListThreadsArgs())
-                    assert bad_env_resp["ok"] is False, \
-                        f"expected rejection of trailing /project-brain, got {bad_env_resp!r}"
-                    assert bad_env_resp["error"]["code"] == "validation_error", \
-                        f"expected validation_error, got {bad_env_resp!r}"
-                    bad_msg = bad_env_resp["error"]["message"]
-                    assert "parent" in bad_msg.lower(), \
-                        f"rejection message should mention parent dir suggestion: {bad_msg!r}"
-                    assert "/tmp/something" in bad_msg, \
-                        f"rejection should include the corrected path '/tmp/something': {bad_msg!r}"
+                    # /project-brain (the old semantic). chdir into a non-git
+                    # tempdir so git walk-up misses and the env var is
+                    # actually consulted.
+                    _saved_cwd_d = os.getcwd()
+                    try:
+                        with tempfile.TemporaryDirectory(prefix="no-git-d-", dir="/tmp") as nogit_d:
+                            os.chdir(nogit_d)
+                            os.environ["PROJECT_BRAIN_HOME"] = "/tmp/something/project-brain"
+                            bad_env_resp = await list_threads_impl(ListThreadsArgs())
+                            assert bad_env_resp["ok"] is False, \
+                                f"expected rejection of trailing /project-brain, got {bad_env_resp!r}"
+                            assert bad_env_resp["error"]["code"] == "validation_error", \
+                                f"expected validation_error, got {bad_env_resp!r}"
+                            bad_msg = bad_env_resp["error"]["message"]
+                            assert "parent" in bad_msg.lower(), \
+                                f"rejection message should mention parent dir suggestion: {bad_msg!r}"
+                            assert "/tmp/something" in bad_msg, \
+                                f"rejection should include the corrected path '/tmp/something': {bad_msg!r}"
+                    finally:
+                        os.chdir(_saved_cwd_d)
 
                     # 14e. RESOLUTION CHAIN — assert each link in isolation.
                     # Saves/restores all env vars + cwd + cache file so the
@@ -627,35 +621,7 @@ async def _run() -> int:
                         assert e is None and _eq_path(r, "/tmp/chain-explicit"), \
                             f"chain link 1 (explicit): {r=} {e=}"
 
-                        # Link 2: PROJECT_BRAIN_HOME.
-                        _clear_chain_env()
-                        os.environ["PROJECT_BRAIN_HOME"] = "/tmp/chain-pbh"
-                        r, e = resolve_project_root(None)
-                        assert e is None and _eq_path(r, "/tmp/chain-pbh"), \
-                            f"chain link 2 (PROJECT_BRAIN_HOME): {r=} {e=}"
-
-                        # Link 3: COWORK_WORKSPACE_FOLDER when PBH unset.
-                        _clear_chain_env()
-                        os.environ["COWORK_WORKSPACE_FOLDER"] = "/tmp/chain-cwf"
-                        r, e = resolve_project_root(None)
-                        assert e is None and _eq_path(r, "/tmp/chain-cwf"), \
-                            f"chain link 3 (COWORK_WORKSPACE_FOLDER): {r=} {e=}"
-
-                        # Link 4: CODEX_PROJECT_ROOT.
-                        _clear_chain_env()
-                        os.environ["CODEX_PROJECT_ROOT"] = "/tmp/chain-codex"
-                        r, e = resolve_project_root(None)
-                        assert e is None and _eq_path(r, "/tmp/chain-codex"), \
-                            f"chain link 4 (CODEX_PROJECT_ROOT): {r=} {e=}"
-
-                        # Link 5: CLAUDE_PROJECT_ROOT.
-                        _clear_chain_env()
-                        os.environ["CLAUDE_PROJECT_ROOT"] = "/tmp/chain-cc"
-                        r, e = resolve_project_root(None)
-                        assert e is None and _eq_path(r, "/tmp/chain-cc"), \
-                            f"chain link 5 (CLAUDE_PROJECT_ROOT): {r=} {e=}"
-
-                        # Link 6: git walk-up from cwd when no env is set.
+                        # Link 2: git walk-up — beats env vars.
                         _clear_chain_env()
                         with tempfile.TemporaryDirectory() as gitroot:
                             (Path(gitroot) / ".git").mkdir()
@@ -663,13 +629,49 @@ async def _run() -> int:
                             subdir.mkdir()
                             os.chdir(subdir)
                             _PROJECT_ROOT_CACHE.unlink(missing_ok=True)
+                            # Set an env var to verify git walk-up still wins
+                            os.environ["PROJECT_BRAIN_HOME"] = "/tmp/chain-env-loses"
                             r, e = resolve_project_root(None)
                             assert e is None and _eq_path(r, gitroot), \
-                                f"chain link 6 (git walk-up): {r=} {e=}"
+                                f"chain link 2 (git walk-up beats env): {r=} {e=}"
+
+                        # Links 3-6: env vars when no git walk-up matches.
+                        # chdir into a non-git tempdir so step 2 misses cleanly.
+                        with tempfile.TemporaryDirectory(prefix="no-git-chain-") as nogit:
+                            os.chdir(nogit)
+                            _PROJECT_ROOT_CACHE.unlink(missing_ok=True)
+
+                            # Link 3: PROJECT_BRAIN_HOME.
+                            _clear_chain_env()
+                            os.environ["PROJECT_BRAIN_HOME"] = "/tmp/chain-pbh"
+                            r, e = resolve_project_root(None)
+                            assert e is None and _eq_path(r, "/tmp/chain-pbh"), \
+                                f"chain link 3 (PROJECT_BRAIN_HOME): {r=} {e=}"
+
+                            # Link 4: COWORK_WORKSPACE_FOLDER when PBH unset.
+                            _clear_chain_env()
+                            os.environ["COWORK_WORKSPACE_FOLDER"] = "/tmp/chain-cwf"
+                            r, e = resolve_project_root(None)
+                            assert e is None and _eq_path(r, "/tmp/chain-cwf"), \
+                                f"chain link 4 (COWORK_WORKSPACE_FOLDER): {r=} {e=}"
+
+                            # Link 5: CODEX_PROJECT_ROOT.
+                            _clear_chain_env()
+                            os.environ["CODEX_PROJECT_ROOT"] = "/tmp/chain-codex"
+                            r, e = resolve_project_root(None)
+                            assert e is None and _eq_path(r, "/tmp/chain-codex"), \
+                                f"chain link 5 (CODEX_PROJECT_ROOT): {r=} {e=}"
+
+                            # Link 6: CLAUDE_PROJECT_ROOT.
+                            _clear_chain_env()
+                            os.environ["CLAUDE_PROJECT_ROOT"] = "/tmp/chain-cc"
+                            r, e = resolve_project_root(None)
+                            assert e is None and _eq_path(r, "/tmp/chain-cc"), \
+                                f"chain link 6 (CLAUDE_PROJECT_ROOT): {r=} {e=}"
 
                         # Link 7: last-used cache when no env and no git.
                         _clear_chain_env()
-                        with tempfile.TemporaryDirectory() as nowhere:
+                        with tempfile.TemporaryDirectory(prefix="no-git-cache-") as nowhere:
                             os.chdir(nowhere)
                             _write_root_cache("/tmp/chain-cached")
                             r, e = resolve_project_root(None)
@@ -680,7 +682,7 @@ async def _run() -> int:
                         # every source tried.
                         _clear_chain_env()
                         _PROJECT_ROOT_CACHE.unlink(missing_ok=True)
-                        with tempfile.TemporaryDirectory() as nowhere:
+                        with tempfile.TemporaryDirectory(prefix="no-git-fail-") as nowhere:
                             os.chdir(nowhere)
                             r, e = resolve_project_root(None)
                             assert r is None, f"chain link 8 should fail: {r=}"

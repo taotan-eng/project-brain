@@ -438,34 +438,19 @@ from pathlib import Path as _Path
 
 
 class InitProjectBrainArgs(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    """Zero-arg init.
 
-    target: str | None = Field(
-        default=None,
-        description=(
-            "Project root for the brain. The brain lands at <target>/project-brain/. "
-            "If omitted, the server auto-detects via the resolution chain: "
-            "$PROJECT_BRAIN_HOME, $COWORK_WORKSPACE_FOLDER, $CODEX_PROJECT_ROOT, "
-            "$CLAUDE_PROJECT_ROOT, git walk-up from cwd, last-used cache. "
-            "Pass explicitly only to override."
-        ),
-    )
-    primary_project: str | None = Field(
-        default=None,
-        description=(
-            "Kebab-case alias for the primary project. If omitted, auto-derived "
-            "from the resolved target's leaf name (e.g. target='/Users/me/Test-Brain' "
-            "→ 'test-brain')."
-        ),
-    )
-    owner: str | None = Field(
-        default=None,
-        description="Owner email; defaults to the TODO@example.com placeholder",
-    )
-    force: bool = Field(
-        default=False,
-        description="If True, allow overwriting an existing brain (backed up to .bak.<timestamp>/)",
-    )
+    The init tool exposes no parameters by design: agent caution on creation
+    tools was getting triggered by the optional fields (target /
+    primary_project / owner / force), and the resolution chain already
+    deterministically resolves the project root from filesystem signals + env
+    vars + cache. Power-user overrides at init time (custom target, custom
+    alias, custom owner, force-overwrite) are deferred to v1.1 as a separate
+    `init_project_brain_advanced` tool.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+    # zero fields — init resolves everything via the chain in _subprocess.py
 
 
 class PromoteThreadToTreeArgs(BaseModel):
@@ -525,45 +510,53 @@ class MaterializeContextArgs(BaseModel):
 
 
 async def init_project_brain_impl(args: InitProjectBrainArgs) -> dict[str, Any]:
-    root, err_resp = _resolve_root_or_err(args.target)
+    """Zero-arg init.
+
+    Resolves the project root via the documented chain (filesystem signals
+    → env vars → cache → fail), derives the primary-project alias as
+    kebab-case of the resolved root's leaf, and shells out to
+    init-brain.sh. Owner is left as the script's TODO@example.com default
+    placeholder. No force path — if a brain already exists at the resolved
+    location, returns validation_error with a hint to remove it manually.
+    """
+    # 1. Resolve project root via the chain (init never passes an explicit arg).
+    root, err_resp = _resolve_root_or_err(None)
     if err_resp:
         return err_resp
 
-    # Auto-derive primary_project from the target leaf when omitted, so the
-    # zero-args call ("create project brain") resolves cleanly via env + leaf.
-    primary_project = (args.primary_project or "").strip()
-    if not primary_project:
-        leaf = _Path(root).name or "project-brain"
-        primary_project = _kebab_from_leaf(leaf)
-        if not primary_project:
-            return err(
-                "validation_error",
-                f"could not derive primary_project from target leaf {leaf!r} (after kebab-case normalization, the result was empty)",
-                hint="pass primary_project=<kebab-case-name> explicitly",
-            )
+    brain_dir = _Path(root) / "project-brain"
 
-    # Safety guard: refuse if a brain already exists at <root>/project-brain/
-    # unless force=True. The .parent-vs-self heuristic from the old impl is
-    # gone — Path C makes `root` unambiguously the project root, and the
-    # brain always lands at <root>/project-brain/.
-    marker = _Path(root) / "project-brain" / "CONVENTIONS.md"
-    if marker.exists() and not args.force:
+    # 2. Existence check — hard error, no force.
+    if (brain_dir / "CONVENTIONS.md").exists():
         return err(
-            "script_error",
-            f"project root {root!r} already has an existing brain at {root}/project-brain/ (CONVENTIONS.md present)",
-            hint="set force=True to overwrite (existing dir is backed up to .bak.<timestamp>/), or pick a different project root",
+            "validation_error",
+            f"Brain already exists at {brain_dir}",
+            hint="Remove or move the existing project-brain/ directory, then retry init_project_brain.",
         )
 
+    # 3. Derive primary_project from the leaf of the resolved root.
+    leaf = _Path(root).name or "project-brain"
+    primary_project = _kebab_from_leaf(leaf)
+    if not primary_project:
+        return err(
+            "validation_error",
+            f"could not derive a kebab-case alias from project-root leaf {leaf!r}",
+            hint=(
+                "rename the project root to something containing at least one "
+                "[a-z0-9] character (e.g. 'my-project'), or set PROJECT_BRAIN_HOME "
+                "to a path with a usable leaf"
+            ),
+        )
+
+    # 4. Shell out to init-brain.sh. Owner omitted -> script writes the
+    # TODO@example.com placeholder. Force omitted -> script's own
+    # existing-brain guard provides defense in depth on top of step 2.
     argv = [f"--home={root}", f"--alias={primary_project}", f"--title={primary_project}"]
-    if args.owner:
-        argv.append(f"--owner={args.owner}")
-    if args.force:
-        argv.append("--force")
     response = from_subprocess_result(run_script("init-brain.sh", argv))
 
-    # Cache the resolved root on successful init so future calls hit it as
-    # chain step 7 even when no env var is set. Best-effort write; failures
-    # don't propagate.
+    # Cache the resolved root on successful init so future calls hit chain
+    # step 7 even when no env var is set. Best-effort write; failures don't
+    # propagate.
     if response.get("ok"):
         _write_root_cache(root)
 

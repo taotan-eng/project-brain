@@ -245,20 +245,18 @@ _materialize_context = wrap_validation(MaterializeContextArgs, materialize_conte
 @app.tool(
     name="init_project_brain",
     description=(
-        "Create a new project-brain at a target directory. Refuses if a brain "
-        "already exists at the target unless force=True (which backs up the "
-        "existing brain to project-brain.bak.<timestamp>/)."
+        "Scaffold project-brain into the resolved project root. Takes no "
+        "arguments — the server resolves the target via the documented "
+        "chain (git walk-up from cwd, then PROJECT_BRAIN_HOME / "
+        "COWORK_WORKSPACE_FOLDER / CODEX_PROJECT_ROOT / CLAUDE_PROJECT_ROOT, "
+        "then the last-used cache) and derives the primary-project alias "
+        "as kebab-case of the resolved root's leaf. Errors with "
+        "validation_error if a brain already exists at the resolved "
+        "location — fix the filesystem and retry."
     ),
 )
-async def init_project_brain(
-    target: str | None = None,
-    primary_project: str | None = None,
-    owner: str | None = None,
-    force: bool = False,
-) -> dict[str, Any]:
-    return await _init_project_brain(
-        target=target, primary_project=primary_project, owner=owner, force=force,
-    )
+async def init_project_brain() -> dict[str, Any]:
+    return await _init_project_brain()
 
 
 @app.tool(
