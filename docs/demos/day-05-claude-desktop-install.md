@@ -18,19 +18,28 @@
 
 ### Step 4 — list_threads call
 
-_Paste the chat transcript or screenshot description here. Confirm the agent called `list_threads` (not just guessed at a thread list)._
+Thread day-5-gate created. Three active threads now:
+
+day-5-gate — Close out day 5
+mcp-demo — Day 5 installation verification
+test-mcp-brain — UX testing
 
 ### Step 5 — new_thread call
 
-_Paste the chat transcript or screenshot description here. Confirm: the agent called `new_thread`, the brain on disk has `threads/mcp-demo/`._
 
+
+list_threads
+list_threads
+slug	status	maturity	modified
+mcp-demo	active	exploring	2026-05-16 14:34
+test-mcp-brain	active	exploring	2026-05-16 14:17
 ### After-state directory listing
 
 ```
 $ ls $PROJECT_BRAIN_HOME/threads/mcp-demo/
 <paste output here>
 ```
-
+decisions-candidates.md	open-questions.md	thread.md
 ## Issues observed
 
 _If any. If none, write "None.";_
