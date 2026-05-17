@@ -142,22 +142,53 @@ For a `pipx install project-brain-mcp` install, use `"command": "project-brain-m
 
 ChatGPT Desktop supports MCP via **custom connectors** in Developer Mode. Available on **Plus, Pro, Team, and Enterprise tiers**; the Free tier doesn't expose MCP custom connectors.
 
-**Architectural note.** Unlike Claude Desktop's `mcpServers` JSON config (which launches local stdio servers directly), ChatGPT accepts **remote HTTP/SSE endpoints only** — it does not host local stdio processes itself. To use project-brain (a stdio server) with ChatGPT, you need to run a local **HTTP/SSE bridge** that exposes the stdio server over a URL ChatGPT can connect to.
+### Step 1 — Install + start the SSE service
 
-### Step 1 — Run the local bridge
+ChatGPT only accepts remote HTTP/SSE endpoints; it can't launch local stdio servers. `project-brain-mcp`'s `--http` flag serves the same MCP server over HTTP/SSE on `127.0.0.1:8787` — that URL is what ChatGPT connects to.
 
-In a terminal, leave this command running (it stays in the foreground):
+One-time install + start:
 
 ```bash
-npx -y mcp-remote http://localhost:8787/sse \
-  --transport stdio \
-  --command "uvx" --args "project-brain-mcp" \
-  --env PROJECT_BRAIN_HOME=/absolute/path/to/your/project-root
+brew install ai-project-brain/project-brain/project-brain-mcp
+brew services start project-brain-mcp
 ```
 
-This launches `mcp-remote` as a local proxy. It serves the project-brain MCP server's stdio interface at `http://localhost:8787/sse`. Replace the `PROJECT_BRAIN_HOME` value with your project root (NOT the `/project-brain` subdir — the server appends it).
+The first command installs the server (already in place if you set up Claude Desktop or the Codex CLI via brew; it's a no-op then). The second starts the SSE daemon as a managed background service via launchd. The service:
 
-For reference, the equivalent Claude-Desktop-side `mcpServers` JSON entry would launch the stdio server directly as `uvx project-brain-mcp` with `PROJECT_BRAIN_HOME` in the `env` block. ChatGPT requires the bridge because its MCP integration is remote-only — the local `uvx project-brain-mcp` invocation is wrapped by `mcp-remote` rather than launched by the host.
+- Auto-starts at login (managed by launchd via `brew services`).
+- Restarts automatically if it crashes (`KeepAlive`).
+- Logs to `/opt/homebrew/var/log/project-brain-mcp.log` (and `.error.log` for stderr).
+- Inherits `PROJECT_BRAIN_HOME` from your shell environment — set it in your shell profile (e.g., `~/.zshrc`) BEFORE `brew services start`, or run `brew services restart project-brain-mcp` after editing.
+
+#### Verify the service is running
+
+```bash
+brew services list | grep project-brain-mcp
+# Expect: project-brain-mcp  started  ...
+```
+
+If status is `error`, check the log:
+
+```bash
+tail -30 /opt/homebrew/var/log/project-brain-mcp.error.log
+```
+
+#### Stopping / restarting / reloading config
+
+```bash
+brew services stop project-brain-mcp
+brew services restart project-brain-mcp   # picks up new env vars from your shell profile
+```
+
+#### Port override
+
+Default port is 8787. If another service uses that port, set `PROJECT_BRAIN_SSE_PORT` in your shell profile:
+
+```bash
+export PROJECT_BRAIN_SSE_PORT=8788
+```
+
+Then `brew services restart project-brain-mcp` and adjust the ChatGPT connector URL to match (Step 2 below).
 
 ### Step 2 — Add the connector in ChatGPT
 
@@ -166,11 +197,11 @@ In ChatGPT Desktop:
 1. Open **Settings → Connectors**.
 2. Click **Advanced** and toggle **Developer mode** on.
 3. Back in Connectors, click **Add custom connector**.
-4. Enter the bridge URL: `http://localhost:8787/sse`.
+4. Enter the SSE URL: `http://localhost:8787/sse`.
 5. Authenticate (if prompted; localhost connectors typically don't require auth).
 6. Save.
 
-The connector is loaded immediately — no app restart needed, unlike Claude Desktop. But the bridge process (Step 1) must be running for the connector to work; close that terminal and the connector goes offline.
+The connector is loaded immediately — no app restart needed, unlike Claude Desktop. The brew service started in Step 1 keeps running in the background (managed by launchd); you don't need a terminal window open for it.
 
 ### Tier note
 
