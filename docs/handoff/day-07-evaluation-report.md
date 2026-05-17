@@ -79,6 +79,8 @@ Tap repo changes (NOT in this PR — sibling repo):
 
 ## Verdict
 
+https://github.com/ai-project-brain/homebrew-project-brain/actions/runs/25980213255
+
 **MERGE-READY.**
 
 All eight criteria are green. The Homebrew install path is end-to-end validated by CI on a fresh `macos-latest` runner: formula style + audit + install + binary on PATH + 15-category MCP smoke test all pass against the rc.5 tarball with the bundled-asset packaging fix. The original handoff's escalation (no `_pack/` in non-editable installs → 0 prompts) is resolved by the wheel `force-include` + `find_pack_root()` source-#4 changes in commit `7149cf4`. INSTALL.md leads with brew, the ChatGPT section is byte-for-byte unchanged, compat-matrix.md has the three brew notes, and the validator + smoke pass at HEAD of the branch. Six deviations from the spec are documented above; none alter the user-visible install story for v1.0. Ready for review and merge to `main`.

@@ -38,6 +38,7 @@ from pathlib import Path
 from typing import Any
 
 from mcp import ClientSession
+from mcp.client.sse import sse_client
 from mcp.client.stdio import StdioServerParameters, stdio_client
 
 
@@ -721,7 +722,7 @@ async def _run() -> int:
                 assert "0 errors" in stdout, \
                     f"verify_tree did not report 0 errors after chained ops. stdout:\n{stdout[:500]}"
 
-        print("MCP SMOKE TEST PASSED")
+        print("stdio roundtrip: PASSED")
         return 0
     except AssertionError as e:
         print(f"MCP SMOKE TEST FAILED: {e}")
@@ -735,8 +736,107 @@ async def _run() -> int:
         shutil.rmtree(tmp, ignore_errors=True)
 
 
+async def _sse_roundtrip() -> None:
+    """Spawn `project-brain-mcp --http` as a subprocess and exercise the
+    SSE transport. Asserts tools/list >= 17 and prompts/list >= 14.
+
+    Day-8 added the --http flag. This sibling of `_run()` confirms the
+    same FastMCP server surfaces correctly over HTTP/SSE on a free port.
+    Only the protocol-level handshake + counts are checked here — the
+    full CRUD flow is already covered by the stdio path in `_run()`.
+    """
+    import socket
+
+    def _free_port(start: int = 8800, end: int = 8810) -> int:
+        for p in range(start, end):
+            try:
+                with socket.socket() as s:
+                    s.bind(("127.0.0.1", p))
+                    return p
+            except OSError:
+                continue
+        raise RuntimeError(f"no free port in {start}-{end}")
+
+    port = _free_port()
+    env = {**os.environ, "PROJECT_BRAIN_SSE_PORT": str(port)}
+    # Use `sys.executable -m project_brain_mcp --http` (parallel to the
+    # stdio path) so the subprocess inherits the same interpreter and
+    # the editable install resolves the same way.
+    proc = await asyncio.create_subprocess_exec(
+        sys.executable, "-m", "project_brain_mcp", "--http",
+        env=env,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    try:
+        # Poll for the server to start accepting TCP connections (up to 8s).
+        bound = False
+        for _ in range(80):
+            await asyncio.sleep(0.1)
+            try:
+                with socket.create_connection(("127.0.0.1", port), timeout=0.2):
+                    bound = True
+                    break
+            except OSError:
+                continue
+        if not bound:
+            stderr = b""
+            try:
+                stderr = await asyncio.wait_for(proc.stderr.read(), timeout=1)
+            except asyncio.TimeoutError:
+                pass
+            raise RuntimeError(
+                f"SSE server did not bind 127.0.0.1:{port} within 8s. "
+                f"stderr: {stderr.decode(errors='replace')[:500]}"
+            )
+
+        url = f"http://127.0.0.1:{port}/sse"
+        async with sse_client(url) as (read, write):
+            async with ClientSession(read, write) as session:
+                await session.initialize()
+                tools_resp = await session.list_tools()
+                prompts_resp = await session.list_prompts()
+                tool_count = len(tools_resp.tools)
+                prompt_count = len(prompts_resp.prompts)
+                assert tool_count >= 17, \
+                    f"SSE: expected >=17 tools, got {tool_count}"
+                assert prompt_count >= 14, \
+                    f"SSE: expected >=14 prompts, got {prompt_count}"
+                print(f"SSE roundtrip: {tool_count} tools, {prompt_count} prompts")
+    finally:
+        if proc.returncode is None:
+            proc.terminate()
+            try:
+                await asyncio.wait_for(proc.wait(), timeout=3)
+            except asyncio.TimeoutError:
+                proc.kill()
+                await proc.wait()
+
+
+async def _run_all() -> int:
+    """Run the stdio roundtrip first; if it passes, run the SSE roundtrip.
+
+    Both must pass for the smoke test to print PASSED.
+    """
+    stdio_rc = await _run()
+    if stdio_rc != 0:
+        return stdio_rc
+    try:
+        await _sse_roundtrip()
+    except AssertionError as e:
+        print(f"MCP SMOKE TEST FAILED: SSE roundtrip: {e}")
+        return 1
+    except Exception as e:  # noqa: BLE001
+        import traceback
+        print(f"MCP SMOKE TEST CRASHED: SSE roundtrip: {type(e).__name__}: {e}")
+        traceback.print_exc()
+        return 2
+    print("MCP SMOKE TEST PASSED (stdio + SSE)")
+    return 0
+
+
 def main() -> int:
-    return asyncio.run(_run())
+    return asyncio.run(_run_all())
 
 
 if __name__ == "__main__":
