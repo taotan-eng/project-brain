@@ -11,23 +11,44 @@ Tier note: works on Claude Desktop Pro and Free (config-edit path below). Max us
 
 ## Install
 
-Quickest path (no virtualenv, no PATH setup):
+### macOS — Homebrew (recommended)
+
+```bash
+brew tap ai-project-brain/project-brain
+brew install project-brain-mcp
+```
+
+This installs the `project-brain-mcp` binary on your PATH. No further setup needed for Claude Code (which auto-detects per-project brains from `cwd`); chat-app hosts (Claude Desktop, Codex CLI) need a config edit — see the per-host sections below.
+
+### Other platforms — `pipx` fallback
+
+If you're on Linux / Windows or prefer not to use Homebrew:
+
+```bash
+pipx install project-brain-mcp
+```
+
+This requires `pipx` (and on Windows / non-stock-Python systems, may require `uv` or `uvx`). Outcomes are identical to the Homebrew install: `project-brain-mcp` ends up on PATH. Plain `pip install --user project-brain-mcp` is also fine if you don't have `pipx`.
+
+### Developer install (editable)
+
+For working on the package itself:
+
+```bash
+pipx install --editable /path/to/project-brain/mcp
+```
+
+Edits to the source tree take effect on the next stdio session. Note that `pipx install --force` overrides any brew-installed binary on PATH; to switch back to brew, run `pipx uninstall project-brain-mcp`.
+
+### Non-Homebrew fallback (uvx, no install)
+
+If you don't want anything persistent on disk:
 
 ```bash
 uvx project-brain-mcp
 ```
 
-`uvx` runs the server in a temporary isolated environment each time it's invoked. Install `uv` first if you don't have it: `curl -LsSf https://astral.sh/uv/install.sh | sh` (macOS / Linux) or follow the instructions at https://docs.astral.sh/uv/.
-
-Alternatives if you prefer a persistent install:
-
-```bash
-pipx install project-brain-mcp        # isolated, but on PATH
-# or
-pip install --user project-brain-mcp  # plain pip user-site install
-```
-
-All three give you a `project-brain-mcp` binary on PATH. The binary speaks MCP over stdio — point your MCP client at it.
+`uvx` runs the server in a temporary isolated environment each time it's invoked. Install `uv` first if needed: `curl -LsSf https://astral.sh/uv/install.sh | sh`. Useful for one-shot trials; for daily use, prefer `brew install` (macOS) or `pipx install` (everywhere).
 
 ## Where the brain lives — two install models
 
@@ -83,8 +104,8 @@ Paste in this snippet (merge into your existing `mcpServers` if you already have
 {
   "mcpServers": {
     "project-brain": {
-      "command": "uvx",
-      "args": ["project-brain-mcp"],
+      "command": "project-brain-mcp",
+      "args": [],
       "env": {
         "PROJECT_BRAIN_HOME": "/absolute/path/to/your/project-root"
       }
@@ -95,9 +116,27 @@ Paste in this snippet (merge into your existing `mcpServers` if you already have
 
 `PROJECT_BRAIN_HOME` tells the server where your **project root** lives. The brain itself sits at `<root>/project-brain/`. The MCP server appends the `/project-brain` suffix automatically — do NOT include it in the env value. If you don't have a brain yet, set `PROJECT_BRAIN_HOME` to the directory where you want one and ask the agent to run `init_project_brain` — it'll create `<root>/project-brain/` for you.
 
-If you installed via pipx or pip-user instead of uvx, change `"command": "uvx"` to `"command": "project-brain-mcp"` and drop the `"args"` line.
-
 After editing the config, fully quit and re-launch Claude Desktop. The MCP server is loaded at app startup; live reload does not pick it up.
+
+#### If you prefer not to use Homebrew
+
+For pipx / pip / uvx installs, replace the `"command"` and `"args"` fields with the appropriate invocation. The `env` block is unchanged.
+
+```json
+{
+  "mcpServers": {
+    "project-brain": {
+      "command": "uvx",
+      "args": ["project-brain-mcp"],
+      "env": {
+        "PROJECT_BRAIN_HOME": "/absolute/path/to/your/project-root"
+      }
+    }
+  }
+}
+```
+
+For a `pipx install project-brain-mcp` install, use `"command": "project-brain-mcp", "args": []` (same as the Homebrew form) — pipx puts the binary on PATH at `~/.local/bin/`, which Claude Desktop should find.
 
 ## ChatGPT Desktop config
 
@@ -152,8 +191,8 @@ Add this block to `~/.codex/config.toml` (TOML format, NOT JSON — different fr
 
 ```toml
 [mcp_servers.project-brain]
-command = "uvx"
-args = ["project-brain-mcp"]
+command = "project-brain-mcp"
+args = []
 
 [mcp_servers.project-brain.env]
 PROJECT_BRAIN_HOME = "/absolute/path/to/your/project-root"
@@ -164,10 +203,25 @@ Same `PROJECT_BRAIN_HOME` semantics as Claude Desktop: it names the **project ro
 Alternatively, add via the CLI without manual TOML editing:
 
 ```bash
-codex mcp add project-brain -- uvx project-brain-mcp
+codex mcp add project-brain -- project-brain-mcp
 ```
 
 Then edit `~/.codex/config.toml` to add the `[mcp_servers.project-brain.env]` block with `PROJECT_BRAIN_HOME`, or set the env var globally in your shell profile.
+
+### If you prefer not to use Homebrew
+
+For pipx / uvx installs, replace `command = "project-brain-mcp"` with the appropriate invocation. The `[mcp_servers.project-brain.env]` block is unchanged.
+
+```toml
+[mcp_servers.project-brain]
+command = "uvx"
+args = ["project-brain-mcp"]
+
+[mcp_servers.project-brain.env]
+PROJECT_BRAIN_HOME = "/absolute/path/to/your/project-root"
+```
+
+For a `pipx install project-brain-mcp` install, the original `command = "project-brain-mcp"` form (no args) works as-is — pipx puts the binary on PATH at `~/.local/bin/`, which `codex` should find.
 
 ### Restart
 
