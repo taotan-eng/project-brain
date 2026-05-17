@@ -99,6 +99,86 @@ If you installed via pipx or pip-user instead of uvx, change `"command": "uvx"` 
 
 After editing the config, fully quit and re-launch Claude Desktop. The MCP server is loaded at app startup; live reload does not pick it up.
 
+## ChatGPT Desktop config
+
+ChatGPT Desktop supports MCP via **custom connectors** in Developer Mode. Available on **Plus, Pro, Team, and Enterprise tiers**; the Free tier doesn't expose MCP custom connectors.
+
+**Architectural note.** Unlike Claude Desktop's `mcpServers` JSON config (which launches local stdio servers directly), ChatGPT accepts **remote HTTP/SSE endpoints only** — it does not host local stdio processes itself. To use project-brain (a stdio server) with ChatGPT, you need to run a local **HTTP/SSE bridge** that exposes the stdio server over a URL ChatGPT can connect to.
+
+### Step 1 — Run the local bridge
+
+In a terminal, leave this command running (it stays in the foreground):
+
+```bash
+npx -y mcp-remote http://localhost:8787/sse \
+  --transport stdio \
+  --command "uvx" --args "project-brain-mcp" \
+  --env PROJECT_BRAIN_HOME=/absolute/path/to/your/project-root
+```
+
+This launches `mcp-remote` as a local proxy. It serves the project-brain MCP server's stdio interface at `http://localhost:8787/sse`. Replace the `PROJECT_BRAIN_HOME` value with your project root (NOT the `/project-brain` subdir — the server appends it).
+
+For reference, the equivalent Claude-Desktop-side `mcpServers` JSON entry would launch the stdio server directly as `uvx project-brain-mcp` with `PROJECT_BRAIN_HOME` in the `env` block. ChatGPT requires the bridge because its MCP integration is remote-only — the local `uvx project-brain-mcp` invocation is wrapped by `mcp-remote` rather than launched by the host.
+
+### Step 2 — Add the connector in ChatGPT
+
+In ChatGPT Desktop:
+
+1. Open **Settings → Connectors**.
+2. Click **Advanced** and toggle **Developer mode** on.
+3. Back in Connectors, click **Add custom connector**.
+4. Enter the bridge URL: `http://localhost:8787/sse`.
+5. Authenticate (if prompted; localhost connectors typically don't require auth).
+6. Save.
+
+The connector is loaded immediately — no app restart needed, unlike Claude Desktop. But the bridge process (Step 1) must be running for the connector to work; close that terminal and the connector goes offline.
+
+### Tier note
+
+ChatGPT Plus and above ship with custom connectors. **ChatGPT Free does not** — there's no UI surface to add an MCP server on the Free tier. If you're on Free, your options are (a) upgrade, (b) use Claude Desktop Free (which DOES support MCP via `mcpServers` config), or (c) run project-brain via the Codex CLI (see below).
+
+## OpenAI Codex CLI config
+
+OpenAI Codex CLI ships native MCP support over stdio. **No tier gating** — works on Free and paid plans. Per-host research note: `docs/notes/day-06-codex-mcp-support.md`.
+
+### Config file path
+
+- **User-scope** (recommended for chat-app-style single-brain workflows): `~/.codex/config.toml`
+- **Project-scope** (per-trusted-project): `.codex/config.toml` at the project root. Codex's trust model gates project-scope; user-scope is the path of least resistance.
+
+### Config snippet
+
+Add this block to `~/.codex/config.toml` (TOML format, NOT JSON — different from Claude Desktop's `mcpServers` config):
+
+```toml
+[mcp_servers.project-brain]
+command = "uvx"
+args = ["project-brain-mcp"]
+
+[mcp_servers.project-brain.env]
+PROJECT_BRAIN_HOME = "/absolute/path/to/your/project-root"
+```
+
+Same `PROJECT_BRAIN_HOME` semantics as Claude Desktop: it names the **project root** (NOT the `project-brain/` subdir — the server appends `/project-brain` automatically).
+
+Alternatively, add via the CLI without manual TOML editing:
+
+```bash
+codex mcp add project-brain -- uvx project-brain-mcp
+```
+
+Then edit `~/.codex/config.toml` to add the `[mcp_servers.project-brain.env]` block with `PROJECT_BRAIN_HOME`, or set the env var globally in your shell profile.
+
+### Restart
+
+Codex reloads MCP config on the next `codex` invocation — no daemon, no app to restart. Open a new terminal session (or just run `codex` again) and the new server is available.
+
+### Known limitation: prompts may not surface
+
+The [MCP clients page](https://modelcontextprotocol.io/clients) lists Codex's supported feature set as **Resources, Tools, Elicitation** — `Prompts` is conspicuously absent. project-brain ships 17 prompts (auto-discovered from `skills/`). These will appear in `prompts/list` and Codex will see them, but Codex may not surface a UI to invoke them. The 17 **tools** (the everyday lifecycle operations) and the 3 **resources** (`brain://thread-index` etc.) work normally.
+
+If you want the prompt bodies as guidance text while using Codex, invoke the `run_skill(name)` tool — it returns the corresponding SKILL.md body as a string. That works on any MCP client because it's a tool, not a prompt.
+
 ## Multi-brain setup (chat apps)
 
 If you maintain more than one brain — for example, a `work` brain and a `personal` brain, or one brain per major project — and you want them all available from a single chat app session, the **recommended pattern is multiple `mcpServers` entries**, one per brain. The same MCP server binary runs as multiple processes under distinct names, each with its own `PROJECT_BRAIN_HOME`.

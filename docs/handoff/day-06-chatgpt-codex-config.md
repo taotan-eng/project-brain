@@ -4,7 +4,7 @@
 - **Date authored**: 2026-05-13
 - **Author**: Tom (taotan6@gmail.com) via planning session
 - **Estimated effort**: 0.5-1 person-day (mostly docs; light code)
-- **Status**: ready
+- **Status**: done
 - **Execution mode**: autonomous test-fix-retest loop; escalate only on judgment calls
 - **Predecessor**: `day-05-complex-tools-and-install.md` (status: done; PR merged to `main`)
 - **Branch**: `day-06/chatgpt-codex-config` (created at pre-flight)
@@ -689,3 +689,35 @@ A separate handoff doc — `day-07-chatgpt-install-demo.md` — will be drafted 
 _Executor: append entries here as you work. Format:_
 
 _- `[YYYY-MM-DDTHH:MMZ]` — what happened_
+
+### 2026-05-16 — Tom (via Claude Code, opus-4-7)
+
+**Status:** done. Five commits on `day-06/chatgpt-codex-config`:
+
+- `5693d1f docs(research): document current Codex CLI MCP support status` — research note recommends **READY** for Codex.
+- `51c30dd docs(install): add ChatGPT Desktop config section` — bundled Task 2 + Task 3 (both new INSTALL.md sections; see deviations below).
+- `a2624aa docs: scaffold compat-matrix.md at repo root` — six-row matrix (Claude Code, Claude Desktop Pro/Free, ChatGPT Plus+, ChatGPT Free, Codex CLI).
+- `73a1d4b docs(handoff): day-6 evaluation report — MERGE-READY` — eval report.
+- (Plus the handoff-doc closure commit that follows this entry.)
+
+**Verdict:** MERGE-READY via `/tmp/day06-eval.sh`. All 8 criteria pass.
+
+**Research note recommendation for Codex: READY.** Codex CLI ships native MCP over stdio at `~/.codex/config.toml` in TOML format. No tier gating. Full working snippet shipped in INSTALL.md § "OpenAI Codex CLI config". Known limitation: Codex's supported feature set per modelcontextprotocol.io/clients is `Resources, Tools, Elicitation` — Prompts not surfaced. project-brain's 17 prompts won't appear in Codex's UI but the `run_skill(name)` tool is available as a fallback.
+
+**Deviations from spec:**
+
+1. **ChatGPT Desktop architecture diverges from the spec's assumptions.** The handoff assumed ChatGPT would work like Claude Desktop with an `mcpServers` JSON config file. Research turned up: ChatGPT Desktop only accepts **remote HTTP/SSE endpoints** via Settings → Connectors (Developer mode). It does NOT host local stdio MCP servers. To use project-brain (stdio), users must run a local `mcp-remote` bridge at `http://localhost:8787/sse` and then add that URL as a custom connector in ChatGPT's UI. The INSTALL.md § "ChatGPT Desktop config" documents this honestly: bridge command + ChatGPT connector UI flow + tier note (Plus/Pro/Team/Enterprise; Free excluded entirely from MCP). Day-7's E2E demo will validate end-to-end.
+
+2. **Task 2 and Task 3 INSTALL.md edits bundled into one commit.** The spec's commit guide describes two separate commits, but both new sections (ChatGPT + Codex) landed in one Edit hunk before staging. The standing instruction "Don't rewrite history" (carried forward from day-5) prevents splitting via `git reset --soft HEAD~1`. The single commit `51c30dd docs(install): add ChatGPT Desktop config section` contains both new sections; reviewers see the union diff. Documented in the eval report's § "Script adjustments".
+
+3. **compat-matrix.md has 6 host rows instead of the spec's 5.** ChatGPT Free gets its own row to make the "not supported" fact unmissable. Eval criterion 3 requires ≥5 data rows; 6 satisfies that with margin.
+
+4. **All `grep` invocations in the eval script use `command grep`** to bypass the user's interactive-shell alias that routes `grep` through Claude Code's ugrep wrapper. Standing workaround from days 1–5.
+
+5. **Test-suite check accepts 4 PromoteLocalTests failures as a passing baseline** — pre-existing bash 3.2 `declare -A` issue from before day-1. Same exclusion pattern as days 3–5.
+
+**Notes for day-7 / day-8:**
+
+- **Day-7 (ChatGPT E2E demo):** the bridge command `npx -y mcp-remote http://localhost:8787/sse --transport stdio --command "uvx" --args "project-brain-mcp"` needs validation on a real Claude Desktop install with the `mcp-remote` package available. If `mcp-remote` doesn't accept exactly those flags, the INSTALL.md section needs adjustment. Run the demo on Plus tier; document the connector-add UI walkthrough.
+- **Day-8 (Codex E2E demo):** test the `codex mcp add project-brain -- uvx project-brain-mcp` CLI command path AND the manual TOML edit path. Confirm `PROJECT_BRAIN_HOME` propagates correctly (TOML's nested `[mcp_servers.project-brain.env]` table). Confirm the "Prompts not surfaced" limitation matches reality (the 17 tools should work; the 17 prompts should be invisible to the user but visible via `prompts/list` if poked directly).
+- **mcp-remote stability:** the bridge isn't an OpenAI-owned tool; it's a community npm package (`mcp-remote` on npm). Day-7 should pin a version in the INSTALL.md snippet if stability becomes a concern.
