@@ -19,11 +19,12 @@ This branch ships Option 2. The `mcp` Python package already in `pyproject.toml`
 
 ## Script adjustments from handoff spec
 
-Three deviations from the handoff, transparently captured:
+Four deviations from the handoff, transparently captured:
 
 1. **`app.run(transport="sse", host=..., port=...)` does not accept `host`/`port` kwargs.** The handoff's reference code passed them as kwargs to `FastMCP.run()`; the installed `mcp==1.27.1` exposes only `(transport, mount_path)`. Configured `app.settings.host` and `app.settings.port` directly on the FastMCP instance before invoking `app.run(transport="sse")`. Net behavior matches the handoff intent; just a different attachment point for the config. Stdio path kept the existing `asyncio.run(app.run_stdio_async())` invocation rather than switching to the synchronous wrapper, so the day-7 stdio behavior is byte-identical.
 2. **Local `brew install` was blocked by the same sandbox file-permission limit as day-7** (`/opt/homebrew/Library/Taps/homebrew/homebrew-core` is not writable in this environment, so `brew install` can't tap homebrew-core for its `python@3.12` dependency). `brew style --fix` and `brew audit --strict --formula ai-project-brain/project-brain/project-brain-mcp` (after re-tapping via symlink so brew sees the rc.6-bumped local copy) both pass with exit 0. Criterion 6 + 7 are validated by tap CI on `macos-latest`, which has homebrew-core pre-tapped. Documented in day-7's eval too; same constraint, same workaround.
 3. **The smoke test's `_sse_roundtrip` invokes `sys.executable -m project_brain_mcp --http`**, not the `project-brain-mcp` PATH binary. This parallels the existing stdio path's `StdioServerParameters(command=sys.executable, args=["-m", "project_brain_mcp"], ...)` (line 180 of the smoke runner) so subprocess and parent share the same interpreter and editable-install resolution. The criterion-1 / criterion-3 PATH binary is separately exercised by the local verify snippet (Task 1) and by the tap CI's "Verify binary on PATH" + "Start service + probe SSE endpoint" steps.
+4. **Tap-CI SSE probe needed a follow-up commit.** The first tap CI run on rc.6 ([run 25981872515](https://github.com/ai-project-brain/homebrew-project-brain/actions/runs/25981872515)) reached the new "Start service + probe SSE endpoint" step but reported `SSE endpoint did not come up within 5s` even though the brew service was healthy. Root cause: the probe used `curl -sSf --max-time 1` and relied on curl's exit code, but SSE keeps the connection open until the client disconnects, so curl times out (exit 28) on every probe even when the endpoint returned HTTP 200 with the initial event payload. The service log on that run confirmed `GET /sse HTTP/1.1" 200 OK` arrived as expected. Fixed by switching the probe to capture `%{http_code}` via `-w` and check that against `200`, swallowing curl's exit with `|| true`. Pushed as tap commit [`3070455`](https://github.com/ai-project-brain/homebrew-project-brain/commit/3070455); CI re-ran as [run 25982080638](https://github.com/ai-project-brain/homebrew-project-brain/actions/runs/25982080638) and went green.
 
 ## Merge criteria
 
@@ -35,7 +36,7 @@ Three deviations from the handoff, transparently captured:
 | 4 | SSE smoke test added + passes | ✓ | `scripts/smoke_mcp_roundtrip.py` adds `_sse_roundtrip()` + `_run_all()` wrapper. Local run prints `SSE roundtrip: 17 tools, 17 prompts` then `MCP SMOKE TEST PASSED (stdio + SSE)`. Tap CI's "Clone main repo + run smoke test" step verifies the same in the brew-installed environment. |
 | 5 | v1.0.0-rc.6 tag + release | ✓ | `git tag v1.0.0-rc.6` on commit `9fb90b5`. `gh release view v1.0.0-rc.6` shows published release at https://github.com/ai-project-brain/project-brain/releases/tag/v1.0.0-rc.6. Tarball sha256 = `fcbb7c3f585297ff0d5f796083d9129224a351e8dce3462f41d939115edd23aa` (computed via `curl ... \| shasum -a 256`). Formula's `url` + `sha256` match. |
 | 6 | Formula edits clean + service block valid | ✓ | `brew style --fix` clean (no offenses). `brew audit --strict --formula ai-project-brain/project-brain/project-brain-mcp` exit 0 (no warnings). Service block uses the modern DSL: `service do; run [opt_bin/"project-brain-mcp", "--http"]; keep_alive true; log_path var/"log/...log"; error_log_path var/"log/...error.log"; end`. No deprecated `plist do ... end`. |
-| 7 | Service starts + SSE responds via brew | ✓ (tap CI) | Tap CI [run 25981872515](https://github.com/ai-project-brain/homebrew-project-brain/actions/runs/25981872515) step "Start service + probe SSE endpoint": `brew services start project-brain-mcp` → poll up to 5s → `curl http://localhost:8787/sse` returns 200 + `text/event-stream` → `SSE OK`. Cleanup step (always-run) calls `brew services stop`. Local validation blocked by sandbox file-permission limit (§ Script adjustments #2). |
+| 7 | Service starts + SSE responds via brew | ✓ (tap CI) | Tap CI [run 25982080638](https://github.com/ai-project-brain/homebrew-project-brain/actions/runs/25982080638) step "Start service + probe SSE endpoint": `brew services start project-brain-mcp` → poll `%{http_code}` up to 5s → status 200 + `text/event-stream` → `SSE OK`. Cleanup step (always-run) calls `brew services stop`. Local validation blocked by sandbox file-permission limit (§ Script adjustments #2). The first CI iteration on the rc.6 formula commit ([run 25981872515](https://github.com/ai-project-brain/homebrew-project-brain/actions/runs/25981872515)) needed a follow-up probe fix — see § Script adjustments #4. |
 | 8 | INSTALL.md + compat-matrix updates correct | ✓ | INSTALL.md `## ChatGPT Desktop config`: Step 1 reads `brew install ai-project-brain/project-brain/project-brain-mcp && brew services start project-brain-mcp`. No `npx`, no `mcp-remote`, no foreground-terminal step. Verify/stop/restart/port-override subsections present. Step 2 connector URL unchanged at `http://localhost:8787/sse`. Free-tier paragraph preserved. Diff is confined to `## ChatGPT Desktop config` (verified via `git diff origin/main..HEAD -- INSTALL.md` — only the ChatGPT hunk lands; Claude Desktop / Codex / Claude Code sections untouched). compat-matrix.md ChatGPT Plus+ row: Transport `HTTP/SSE` (no longer `via bridge`); Notes contains `brew install project-brain-mcp && brew services start project-brain-mcp`. "First-session validated" advanced to `pending (day-9)`. |
 
 ## Files changed (this branch vs main)
@@ -53,8 +54,8 @@ Plus the eval report you're reading (`docs/handoff/day-08-evaluation-report.md`)
 Tap repo changes (NOT in this PR — sibling repo `ai-project-brain/homebrew-project-brain`):
 
 ```
- Formula/project-brain-mcp.rb              | 13 +++--    (rc.5 → rc.6 + service block + desc bump)
- .github/workflows/brew-formula-build.yml  | 41 ++++++  (service-start + SSE probe + cleanup)
+ Formula/project-brain-mcp.rb              | 13 ++--   (rc.5 → rc.6 + service block + desc bump)
+ .github/workflows/brew-formula-build.yml  | 50 +++++  (service-start + SSE probe + cleanup + probe-fix)
 ```
 
 ## Commits (this branch)
@@ -74,15 +75,16 @@ effd511 feat(mcp): add SSE transport via --http flag
 - Default branch: `main`
 - Formula: `Formula/project-brain-mcp.rb` ships `project-brain-mcp v1.0.0-rc.6` with `service do ... end` block
 - CI workflow: `.github/workflows/brew-formula-build.yml` builds + smoke-tests + starts service + probes SSE on `macos-latest` for every push.
-- CI run for the rc.6 + SSE-probe commit (`4b28076`): https://github.com/ai-project-brain/homebrew-project-brain/actions/runs/25981872515
+- CI run for the final tap commit (`3070455`, probe-fix on top of rc.6 + SSE probe): https://github.com/ai-project-brain/homebrew-project-brain/actions/runs/25982080638
 - Tap-repo commit SHAs:
   - `f7899ed feat(formula): bump to rc.6 + add service block for SSE daemon`
   - `4b28076 ci(tap): probe SSE endpoint after brew services start`
+  - `3070455 ci(tap): probe SSE via %{http_code}, not curl exit code` (fixes the curl-on-SSE-times-out bug from § Script adjustments #4)
 
 ## Verdict
 
 **MERGE-READY.**
 
-All 8 criteria are green. The native-SSE path is end-to-end validated by tap CI on a fresh `macos-latest` runner: rc.6 formula installs cleanly, `brew services start project-brain-mcp` launches the SSE daemon under launchd, and `curl http://localhost:8787/sse` returns 200 + `text/event-stream`. The stdio default is byte-identical to day-7 — Claude Desktop / Codex / Claude Code users see zero behavioral change. INSTALL.md's ChatGPT section is rewritten to the `brew install + brew services start` pattern with no `npx mcp-remote` or foreground-terminal step. compat-matrix.md drops the "(via bridge)" qualifier and advances the demo target to day-9 (E2E ChatGPT connector add). Three deviations from the spec are documented in § Script adjustments; none alter user-visible install behavior. Ready for review and merge to `main`.
+All 8 criteria are green. The native-SSE path is end-to-end validated by tap CI on a fresh `macos-latest` runner: rc.6 formula installs cleanly, `brew services start project-brain-mcp` launches the SSE daemon under launchd, and `curl http://localhost:8787/sse` returns 200 + `text/event-stream`. The stdio default is byte-identical to day-7 — Claude Desktop / Codex / Claude Code users see zero behavioral change. INSTALL.md's ChatGPT section is rewritten to the `brew install + brew services start` pattern with no `npx mcp-remote` or foreground-terminal step. compat-matrix.md drops the "(via bridge)" qualifier and advances the demo target to day-9 (E2E ChatGPT connector add). Four deviations from the spec are documented in § Script adjustments; none alter user-visible install behavior. Ready for review and merge to `main`.
 
 Day-9 will exercise the actual ChatGPT connector add against this binary. If FastMCP's SSE handshake turns out to be incompatible with ChatGPT's client, the documented fallback is to ship `mcp-remote` as a `project-brain-bridge` formula for v1.0.1; v1.0's stdio paths and the `--http` flag itself remain useful even in that fallback scenario.
