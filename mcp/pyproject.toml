@@ -21,3 +21,9 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/project_brain_mcp"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"../skills" = "project_brain_mcp/_pack/skills"
+"../scripts" = "project_brain_mcp/_pack/scripts"
+"../assets" = "project_brain_mcp/_pack/assets"
+"../CONVENTIONS.md" = "project_brain_mcp/_pack/CONVENTIONS.md"

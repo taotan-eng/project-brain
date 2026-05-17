@@ -147,11 +147,12 @@ def resolve_brain_dir(arg: str | None) -> tuple[str | None, str | None]:
 def find_pack_root(start: Path | None = None) -> Path:
     """Resolve the project-brain pack root.
 
-    Same 4-tier order as scripts/_plugin_root.sh:
+    Resolution order (first match wins):
       1. $PROJECT_BRAIN_PACK_ROOT
       2. $CLAUDE_PLUGIN_ROOT
-      3. Auto-detect: walk up from `start` until CONVENTIONS.md + skills/ + scripts/
-      4. Auto-detect: walk up from this module's location
+      3. Walk up from `start` (caller-provided cwd)
+      4. Bundled pack at `<module>/_pack/` (pip/brew/wheel installs)
+      5. Walk up from this module's location (editable installs)
     """
     env = os.environ.get("PROJECT_BRAIN_PACK_ROOT") or os.environ.get("CLAUDE_PLUGIN_ROOT")
     if env:
@@ -159,13 +160,23 @@ def find_pack_root(start: Path | None = None) -> Path:
         if _looks_like_pack(p):
             return p
 
-    for here in [start, Path(__file__).resolve().parent]:
-        if here is None:
-            continue
-        here = Path(here).resolve()
-        for candidate in [here, *here.parents]:
+    # Source 3: walk up from `start` (caller-provided cwd)
+    if start is not None:
+        start = Path(start).resolve()
+        for candidate in [start, *start.parents]:
             if _looks_like_pack(candidate):
                 return candidate
+
+    # Source 4: bundled pack alongside the installed module (pip/brew installs)
+    bundled = Path(__file__).resolve().parent / "_pack"
+    if _looks_like_pack(bundled):
+        return bundled
+
+    # Source 5: walk up from this module's location (editable-install fallback)
+    here = Path(__file__).resolve().parent
+    for candidate in [here, *here.parents]:
+        if _looks_like_pack(candidate):
+            return candidate
 
     raise RuntimeError(
         "Cannot resolve pack root. Set PROJECT_BRAIN_PACK_ROOT or run from inside the pack."
