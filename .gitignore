@@ -34,3 +34,6 @@ sandbox/
 # FUSE-mounted workspaces may leave the on-disk dir (sandbox can't
 # unlink). Ignored so re-scans don't track it again.
 skills/new-thread/_stale_assets/
+
+mcp/dist
+.claude/
