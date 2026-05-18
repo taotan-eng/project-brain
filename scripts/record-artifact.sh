@@ -203,7 +203,7 @@ if [[ $APPEND -eq 1 ]]; then
       printf '\n'
     fi
   } >> "$TRANSCRIPT"
-  echo "Appended '$TITLE' to $(realpath --relative-to="$BRAIN" "$TRANSCRIPT")."
+  echo "Appended '$TITLE' to ${TRANSCRIPT#$BRAIN/}."
   # Append mode doesn't change validator-visible state; skip the rebuild for
   # speed. (The transcript is kind=transcript, which is exempt from V-06.)
   echo "Done."
@@ -353,7 +353,7 @@ touch "$TRANSCRIPT"
   printf '_by %s · %s artifact%s._\n\n' \
     "$BY" "$ARTIFACT_KIND" "$( [[ ${#CREATED_PATHS[@]} -gt 1 ]] && printf 's' )"
   for p in "${CREATED_PATHS[@]}"; do
-    rel="$(realpath --relative-to="$THREAD_DIR" "$p")"
+    rel="${p#$THREAD_DIR/}"
     printf -- '- → %s\n' "$rel"
   done
 } >> "$TRANSCRIPT"
@@ -371,7 +371,7 @@ if [[ $NO_REBUILD -eq 0 && -f "$VERIFIER" ]]; then
     echo "         run 'verify-tree --brain $BRAIN' to see specifics." >&2
     echo "created:" >&2
     for p in "${CREATED_PATHS[@]}"; do
-      echo "  $(realpath --relative-to="$BRAIN" "$p")" >&2
+      echo "  ${p#$BRAIN/}" >&2
     done
     exit 1
   fi
@@ -382,11 +382,11 @@ fi
 # ---------------------------------------------------------------------------
 
 if [[ ${#CREATED_PATHS[@]} -eq 1 ]]; then
-  echo "Recorded artifact: $(realpath --relative-to="$BRAIN" "${CREATED_PATHS[0]}")."
+  echo "Recorded artifact: ${CREATED_PATHS[0]#$BRAIN/}."
 else
   echo "Recorded ${#CREATED_PATHS[@]} artifacts under thread '$SLUG':"
   for p in "${CREATED_PATHS[@]}"; do
-    echo "  $(realpath --relative-to="$BRAIN" "$p")"
+    echo "  ${p#$BRAIN/}"
   done
 fi
 if [[ "$BY" == "TODO@example.com" ]]; then
