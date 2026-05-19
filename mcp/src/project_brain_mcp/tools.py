@@ -126,7 +126,7 @@ async def list_threads_impl(args: ListThreadsArgs) -> dict[str, Any]:
     brain, err_resp = _resolve_brain_or_err(args.brain)
     if err_resp:
         return err_resp
-    argv = [f"--brain={brain}"]
+    argv = [f"--brain={brain}", "--format=json"]
     if args.status:
         argv.append(f"--status={args.status}")
     if args.domain:
