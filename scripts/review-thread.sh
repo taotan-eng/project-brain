@@ -345,7 +345,7 @@ if [[ ${#ARTIFACTS[@]} -gt 0 ]]; then
     akind="$(fm_scalar "$p" artifact_kind)"
     [[ -z "$akind" ]] && akind="-"
     [[ -z "$atitle" ]] && atitle="$(basename "$p" .md)"
-    rel="$(realpath --relative-to="$THREAD_DIR" "$p")"
+    rel="${p#$THREAD_DIR/}"
     printf -- '- [`%s`](file://%s) — *%s* — %s\n' "$rel" "$p" "$akind" "$atitle"
   done
 fi
@@ -353,7 +353,7 @@ fi
 if [[ ${#ATTACHMENTS[@]} -gt 0 ]]; then
   printf '\n## Attachments (%s)\n\n' "${#ATTACHMENTS[@]}"
   for p in "${ATTACHMENTS[@]}"; do
-    rel="$(realpath --relative-to="$THREAD_DIR" "$p")"
+    rel="${p#$THREAD_DIR/}"
     size_b="$(stat -c%s "$p" 2>/dev/null || stat -f%z "$p" 2>/dev/null || echo '?')"
     size_h="$(human_size "$size_b")"
     printf -- '- [`%s`](file://%s) — %s\n' "$rel" "$p" "$size_h"
