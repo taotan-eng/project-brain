@@ -1,24 +1,31 @@
 {
   "name": "project-brain",
-  "version": "1.0.0-rc4",
-  "description": "A portable skill pack that turns unstructured thinking into a durable decision tree. Ships seventeen cooperating skills for moving an idea from 'I was thinking about X' to a merged, reviewed, auditable decision in your repo.",
+  "version": "1.0.0-rc.8",
+  "description": "Markdown-in-git decision-tracking MCP server pack. Seventeen cooperating skills for moving an idea from 'I was thinking about X' to a merged, reviewed, auditable decision in your repo. Works across Claude Desktop, Claude Code, Codex CLI/GUI, and ChatGPT Desktop via MCP.",
   "author": {
     "name": "Tom",
     "email": "taotan6@gmail.com"
   },
-  "homepage": "https://github.com/taotan-eng/project-brain",
-  "repository": "https://github.com/taotan-eng/project-brain",
+  "homepage": "https://github.com/ai-project-brain/project-brain",
+  "repository": "https://github.com/ai-project-brain/project-brain",
   "license": "Apache-2.0",
   "keywords": [
-    "skills",
-    "project-management",
+    "mcp",
+    "mcp-server",
     "decision-log",
     "knowledge-management",
-    "thoughts",
-    "decision-tree",
     "ADR",
     "architecture-decision-records",
+    "skills",
+    "project-management",
     "brain",
     "productivity"
-  ]
+  ],
+
+  "mcpServers": {
+    "project-brain": {
+      "command": "project-brain-mcp",
+      "args": []
+    }
+  }
 }

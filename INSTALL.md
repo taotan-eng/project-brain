@@ -18,7 +18,7 @@ brew tap ai-project-brain/project-brain
 brew install project-brain-mcp
 ```
 
-This installs the `project-brain-mcp` binary on your PATH. No further setup needed for Claude Code (which auto-detects per-project brains from `cwd`); chat-app hosts (Claude Desktop, Codex CLI) need a config edit — see the per-host sections below.
+This installs the `project-brain-mcp` binary on your PATH. **Claude Code** users complete the install with `/plugin install ai-project-brain/project-brain` (registers the MCP server with Claude Code). Chat-app hosts (Claude Desktop, Codex CLI, ChatGPT Desktop) need a config edit — see the per-host sections below.
 
 ### Other platforms — `pipx` fallback
 
