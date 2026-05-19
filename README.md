@@ -12,8 +12,8 @@ The pack lives in `project-brain/` at your project root — visible, tracked, re
 
 1. [What the pack does](#what-the-pack-does)
 2. [Install](#install)
-    - [Install by pointing an AI agent at the repo](#install-by-pointing-an-ai-agent-at-the-repo)
-    - [Install manually](#install-manually)
+    - [Install in Claude Code](#install-in-claude-code)
+    - [Install in other hosts](#install-in-other-hosts)
     - [Post-install sanity check](#post-install-sanity-check)
 3. [Workflow at a glance](#workflow-at-a-glance)
 4. [The fourteen skills](#the-fourteen-skills)
@@ -46,105 +46,57 @@ Every skill in the pack reads `CONVENTIONS.md` at the brain root as its source o
 
 If you want to see what the pack does before installing, jump to [QUICKSTART.md](QUICKSTART.md) — it walks through a hiring-decision example end-to-end without requiring you to install anything.
 
-**Two operational models**: project-brain runs in two shapes depending on host. **CLI tools** (Claude Code, OpenAI Codex CLI) auto-detect the brain from `cwd` — one brain per project, no env var needed. **Chat apps** (Claude Desktop, ChatGPT Desktop) have no filesystem project concept, so the MCP config sets one canonical brain via `PROJECT_BRAIN_HOME`. Same user can run both. See [INSTALL.md § "Where the brain lives — two install models"](INSTALL.md#where-the-brain-lives--two-install-models) for the full table and per-host notes.
+project-brain is an MCP server. One install puts the binary on your PATH, and each host (Claude Code, Claude Desktop, OpenAI Codex CLI, ChatGPT Desktop) wires it in via that host's MCP configuration. Skills, prompts, and tools are surfaced through MCP — there is no `.claude/skills/` copy step.
 
-### Install as a Claude Code / Cowork plugin (recommended)
+**Two operational models**: **CLI tools** (Claude Code, Codex CLI) auto-detect the brain from `cwd` — one brain per project, no env var needed. **Chat apps** (Claude Desktop, ChatGPT Desktop) have no filesystem project concept, so the MCP config sets one canonical brain via `PROJECT_BRAIN_HOME`. Same user can run both. See [INSTALL.md § "Where the brain lives — two install models"](INSTALL.md#where-the-brain-lives--two-install-models) for the full table and per-host notes.
 
-The pack ships as a native Claude plugin. One-time setup per user, then the 14 skills are available in every project you open.
+### Install in Claude Code
 
-**Claude Code CLI:**
-
-```sh
-claude plugin marketplace add taotan-eng/project-brain
-claude plugin install project-brain@project-brain
-claude plugin list         # confirms project-brain@project-brain is enabled
-```
-
-**Claude Cowork (desktop app):** Cowork's in-app plugin browser (Settings → Extensions) currently surfaces only Anthropic- and partner-curated plugins, so `project-brain` isn't searchable there yet. Until the pack is accepted into Anthropic's community directory, Cowork users should install via the Claude Code CLI above (Cowork picks up plugins installed through the CLI on the same machine) or follow the manual procedure below.
-
-Once installed, skip ahead to the first-run scaffold step — the plugin install handles Step 1 + Step 2 of the manual procedure for you. You only need to run `init-project-brain` against your project to get `project-brain/` scaffolded.
-
-### Install by pointing an AI agent at the repo
-
-Copy-paste one of the prompts below into your AI coding assistant (Claude Code, Claude Desktop / Cowork, Codex, Cursor, Gemini CLI, Aider, or any agent that can clone a repo and write files). Replace `<repo-url>` with the pack's GitHub URL.
-
-> **Generic install prompt (any agent).**
->
-> Install the `project-brain` skill pack from `<repo-url>` into my current project.
->
-> Steps:
->
-> 1. `git clone <repo-url> /tmp/project-brain-pack` (or any scratch location).
-> 2. Read `/tmp/project-brain-pack/README.md` and `/tmp/project-brain-pack/CONVENTIONS.md` in full.
-> 3. Read every `skills/*/SKILL.md` so you know what each skill does.
-> 4. Read `/tmp/project-brain-pack/INSTALL.md` for the step-by-step install procedure; it is authoritative if it disagrees with anything you infer.
-> 5. Copy the pack contents (`skills/`, `assets/`, `CONVENTIONS.md`, `scripts/`) into the place your agent runtime expects skill packs to live (Claude Code: `.claude/skills/project-brain/`; others: whatever the runtime's skill-pack directory is — ask me if unsure).
-> 6. Run `skills/init-project-brain` against my current repo to scaffold `project-brain/`. If your runtime cannot invoke the skill directly, follow the Process section of `skills/init-project-brain/SKILL.md` by hand — it is written as an instruction sheet for exactly this case.
-> 7. Report what you scaffolded and what answers you gave to the init prompts (project alias, domain list, etc.) so I can review.
->
-> Do not modify any pack file during install. If you find the pack is missing something you need, surface it as a warning; do not patch the pack in place.
-
-> **Claude Code specific prompt.**
->
-> Clone `<repo-url>` and install its `project-brain` skill pack. Place it at `.claude/skills/project-brain/` inside my current repo. Read `CONVENTIONS.md` and every `skills/*/SKILL.md` before doing anything else. Then run the `init-project-brain` skill to scaffold `project-brain/` in this project.
-
-> **Codex / Cursor / Gemini CLI / Aider specific prompt.**
->
-> Your runtime may or may not have a "skill pack" concept. Treat the SKILL.md files as authoritative instruction sheets. Install path:
->
-> 1. Clone `<repo-url>` somewhere on disk.
-> 2. Copy `CONVENTIONS.md` to `project-brain/CONVENTIONS.md` in my project (`init-project-brain` expects it there and will refuse without it).
-> 3. Copy `skills/`, `assets/`, and `scripts/` to a predictable location (suggested: `project-brain/.pack/`) so the other skills can find their templates and helpers.
-> 4. Walk `skills/init-project-brain/SKILL.md` step by step to scaffold the rest.
-> 5. Future invocations of any skill = read that skill's SKILL.md, follow its Process section, honor its Preconditions and Postconditions.
-
-### Install manually
-
-If you prefer to install by hand (or your agent lacks repo-clone capability):
+Two steps:
 
 ```sh
-# 1. Clone the pack into a scratch location.
-git clone <repo-url> /tmp/project-brain-pack
-cd <your-project>
+# Step 1 — install the MCP server binary
+brew install ai-project-brain/project-brain/project-brain-mcp
 
-# 2. Copy the pack into your project.
-#    Claude Code layout:
-mkdir -p .claude/skills
-cp -R /tmp/project-brain-pack/skills/*  .claude/skills/
-#    CONVENTIONS and scripts land at the brain root once init runs:
-mkdir -p thoughts
-cp /tmp/project-brain-pack/CONVENTIONS.md project-brain/CONVENTIONS.md
-cp -R /tmp/project-brain-pack/assets  project-brain/.pack-assets    # referenced by the skills
-cp -R /tmp/project-brain-pack/scripts project-brain/.pack-scripts   # e.g. verify-tree.py
-
-# 3. Verify the skills are discoverable by your runtime.
-#    Claude Code:
-ls .claude/skills/      # should list init-project-brain, new-thread, ...
-
-# 4. Run init-project-brain. Your runtime invokes skills its own way;
-#    from Claude Code, ask it to run `init-project-brain`.
-#    From any other runtime, open skills/init-project-brain/SKILL.md
-#    and follow the Process section manually.
+# Step 2 — install the plugin (registers the MCP server with Claude Code)
+/plugin install ai-project-brain/project-brain
 ```
 
-After init runs, your repo gains a `project-brain/` directory with `thread-index.md`, `current-state.md`, `tree/NODE.md`, one `NODE.md` per top-level domain, and an entry in `~/.config/project-brain/projects.yaml`. The bootstrap lands as a single commit on your current branch.
+Step 1 puts the `project-brain-mcp` binary on your PATH. On macOS this also picks up the pre-built Homebrew bottle so the install takes ~30 seconds; non-bottled installs (or other platforms via `pipx install project-brain-mcp`) source-build but the end state is identical: `project-brain-mcp` resolvable on PATH.
+
+Step 2 loads the plugin manifest (`.claude-plugin/plugin.json`) which registers `project-brain-mcp` as an MCP server under the name `project-brain`. Claude Code surfaces the 17 prompts as namespaced slash commands (e.g. `/project-brain:new-thread`) and the 17 tools as model-invokable functions; the prompts/tools list comes from the running MCP server, so the plugin install is just the registration step.
+
+If Step 2 reports `Executable not found in $PATH` (the wording Claude Code uses for missing MCP-server binaries), Step 1 didn't finish — run `command -v project-brain-mcp`, fix the PATH if needed, then `/plugin reload`.
+
+### Install in other hosts
+
+| Host | Path | INSTALL.md section |
+|------|------|--------------------|
+| Claude Desktop (Pro / Free) | `mcpServers` JSON config edit + `PROJECT_BRAIN_HOME` | [Claude Desktop config](INSTALL.md#claude-desktop-config) |
+| OpenAI Codex CLI | `~/.codex/config.toml` `[mcp_servers.project-brain]` block | [OpenAI Codex CLI config](INSTALL.md#openai-codex-cli-config) |
+| ChatGPT Desktop (Plus+) | `brew services start project-brain-mcp` + custom-connector URL | [ChatGPT Desktop config](INSTALL.md#chatgpt-desktop-config) |
+
+All three start from the same `brew install` (Step 1 above) — only the per-host wiring differs. INSTALL.md is the authority for the exact config snippets, env vars, and validation commands.
 
 ### Post-install sanity check
 
+After running the host-specific wiring, prompt the host:
+
+> Using project-brain, list my threads.
+
+Expected behavior: the agent calls the `list_threads` MCP tool, which scaffolds a brain on first use (if one doesn't exist) and returns the thread index. If the agent answers without calling a tool, the MCP connection didn't establish — check the host's MCP server status panel and confirm `project-brain-mcp` is on PATH.
+
+For the terminal-only smoke test (no host needed):
+
 ```sh
-# From your project root, inside the brain:
-cd thoughts
-
-# Validate the scaffold.
-python3 .pack-scripts/verify-tree.py            # should exit 0
-# Or, if the skill is directly invokable:
-# skill: verify-tree
-
-# Confirm the project alias registered.
-cat ~/.config/project-brain/projects.yaml | grep -A5 '<your-alias>:'
+python3 -c "
+import subprocess, json
+proc = subprocess.run(['project-brain-mcp'], input=b'', timeout=2, capture_output=True)
+print('binary exited cleanly with stdin closed' if proc.returncode == 0 else f'failed: {proc.returncode}')
+"
 ```
 
-If `verify-tree` fails with "Brain root not found", you ran it from outside `project-brain/` — cd in first. If it fails with "Missing CONVENTIONS.md", the install did not copy the file; re-run step 2 of the manual install.
+`project-brain-mcp` reads MCP JSON-RPC frames on stdin and exits 0 when stdin closes. If the call hangs or errors, the install is broken — see INSTALL.md § "Other platforms — `pipx` fallback" for a non-Homebrew install path.
 
 ---
 
