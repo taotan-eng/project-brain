@@ -1,5 +1,50 @@
 # Release Notes
 
+## v1.0.0 — 2026-05-19
+
+**Cross-harness MCP release.** Project-brain ships as an MCP server pack that works across Claude Desktop, Claude Code, Codex CLI, Codex GUI, and ChatGPT Desktop. macOS install via Homebrew tap with prebuilt bottles (~30s install). Linux/Windows install via pipx.
+
+### What's new since rc4
+
+| Shift | What changed |
+|---|---|
+| MCP server | New `project-brain-mcp` binary — 17 tools, 17 auto-discovered prompts, 3 resources. Single source of truth for skill behavior across every host. |
+| Cross-host distribution | INSTALL.md ships per-host config sections (Claude Desktop, Codex CLI, ChatGPT Desktop). Each host wires to the same MCP server. |
+| Homebrew tap | `brew install ai-project-brain/project-brain/project-brain-mcp`. Prebuilt bottles for macOS 14 (Sonoma) and macOS 15 (Sequoia) on Apple Silicon — ~30 second install. |
+| Native SSE transport | `project-brain-mcp --http` serves the same server over HTTP/SSE for ChatGPT Desktop. `brew services start project-brain-mcp` runs it as a managed launchd daemon. |
+| Shape B distribution refactor | Claude Code plugin is a thin manifest that registers the MCP server. Slash commands surface via MCP prompt auto-discovery — no more parallel maintenance of plugin commands + MCP tools. |
+| macOS realpath compat | `record-artifact.sh` and `review-thread.sh` no longer use GNU `--relative-to=`. Fixes silent failures on BSD realpath. |
+
+### Install
+
+```sh
+# macOS (recommended)
+brew install ai-project-brain/project-brain/project-brain-mcp
+
+# Linux / Windows
+pipx install project-brain-mcp
+
+# Claude Code (after brew or pipx)
+/plugin marketplace add ai-project-brain/project-brain
+/plugin install project-brain
+
+# Other hosts: see INSTALL.md
+```
+
+### Migration from rc4
+
+If you were running rc4 (April-era Claude-Code-plugin-only pack):
+
+1. `brew install ai-project-brain/project-brain/project-brain-mcp` (or pipx).
+2. Refresh your Claude Code plugin: `/plugin uninstall project-brain && /plugin marketplace remove project-brain && /plugin marketplace add ai-project-brain/project-brain && /plugin install project-brain`.
+3. Brain on disk unchanged; existing thread state preserved. No data migration script.
+
+### Known gaps
+
+- **ChatGPT Desktop end-to-end demo pending.** Install path documented; transport verified by tap CI (`curl http://localhost:8787/sse` → HTTP 200 + `text/event-stream`). End-user demo against ChatGPT Plus's custom-connector UI lands as a post-release PR (see `chatgpt-desktop-validation` in the maintainer's meta-brain).
+- **Linux/Windows native bottles deferred to v1.1.** Linux + Windows users use pipx today.
+- **Homebrew-core submission deferred to v1.1.** Today's install uses the `ai-project-brain/project-brain` tap.
+
 ## v1.0.0-rc4 — 2026-04-23
 
 **One breaking directory rename** plus five additive quality-of-life shifts driven by agentic-IDE usability feedback. Migrate an existing rc3 brain with the helper script (below).
