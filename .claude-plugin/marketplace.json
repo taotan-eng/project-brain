@@ -9,7 +9,7 @@
     {
       "name": "project-brain",
       "description": "Seventeen cooperating skills for decision-tracking across Claude Desktop, Claude Code, Codex CLI/GUI, and ChatGPT Desktop. MCP-anchored: one install (brew) reaches every host.",
-      "version": "1.0.0-rc.8",
+      "version": "1.0.0",
       "author": {
         "name": "Tom",
         "email": "taotan6@gmail.com"

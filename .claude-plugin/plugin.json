@@ -1,6 +1,6 @@
 {
   "name": "project-brain",
-  "version": "1.0.0-rc.8",
+  "version": "1.0.0",
   "description": "Markdown-in-git decision-tracking MCP server pack. Seventeen cooperating skills for moving an idea from 'I was thinking about X' to a merged, reviewed, auditable decision in your repo. Works across Claude Desktop, Claude Code, Codex CLI/GUI, and ChatGPT Desktop via MCP.",
   "author": {
     "name": "Tom",

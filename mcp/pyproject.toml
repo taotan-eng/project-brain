@@ -1,6 +1,6 @@
 [project]
 name = "project-brain-mcp"
-version = "0.1.0"
+version = "1.0.0"
 description = "MCP server for project-brain — markdown-in-git decision tracking"
 readme = "README.md"
 authors = [{name = "Tom", email = "taotan6@gmail.com"}]
