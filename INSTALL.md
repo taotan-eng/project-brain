@@ -159,12 +159,9 @@ Add this block to `~/.codex/config.toml` (TOML format, NOT JSON — different fr
 [mcp_servers.project-brain]
 command = "project-brain-mcp"
 args = []
-
-[mcp_servers.project-brain.env]
-PROJECT_BRAIN_HOME = "/absolute/path/to/your/project-root"
 ```
 
-Same `PROJECT_BRAIN_HOME` semantics as Claude Desktop: it names the **project root** (NOT the `project-brain/` subdir — the server appends `/project-brain` automatically).
+Codex resolves the brain from your current project directory — open Codex in the project you want, and project-brain uses that directory's `project-brain/` subdir. No `PROJECT_BRAIN_HOME` pin is needed in the default config; the server's cwd-fallback resolution does the right thing.
 
 Alternatively, add via the CLI without manual TOML editing:
 
@@ -172,19 +169,29 @@ Alternatively, add via the CLI without manual TOML editing:
 codex mcp add project-brain -- project-brain-mcp
 ```
 
-Then edit `~/.codex/config.toml` to add the `[mcp_servers.project-brain.env]` block with `PROJECT_BRAIN_HOME`, or set the env var globally in your shell profile.
+#### Advanced: pin a specific brain
+
+To make Codex always use one brain regardless of which project you open it in, add an env block:
+
+```toml
+[mcp_servers.project-brain.env]
+PROJECT_BRAIN_HOME = "/absolute/path/to/your/project-root"
+```
+
+Note: a pin overrides per-project resolution — Codex will use this brain even when you open it in a different project. Same `PROJECT_BRAIN_HOME` semantics as Claude Desktop: it names the **project root** (NOT the `project-brain/` subdir — the server appends `/project-brain` automatically).
+
+#### Codex worktrees
+
+Codex creates a git worktree for its session when working inside a git repo. That requires a `main` branch — if your repo's default branch is `master` or has no commits yet, Codex's worktree step fails with `fatal: invalid reference: main` before project-brain is even reached. Either work in a non-git directory (Codex runs in place), or ensure the repo has a committed `main` branch (`git branch -m master main`, or make an initial commit). This is a Codex requirement, not a project-brain one.
 
 ### If you prefer not to use Homebrew
 
-For pipx / uvx installs, replace `command = "project-brain-mcp"` with the appropriate invocation. The `[mcp_servers.project-brain.env]` block is unchanged.
+For pipx / uvx installs, replace `command = "project-brain-mcp"` with the appropriate invocation:
 
 ```toml
 [mcp_servers.project-brain]
 command = "uvx"
 args = ["project-brain-mcp"]
-
-[mcp_servers.project-brain.env]
-PROJECT_BRAIN_HOME = "/absolute/path/to/your/project-root"
 ```
 
 For a `pipx install project-brain-mcp` install, the original `command = "project-brain-mcp"` form (no args) works as-is — pipx puts the binary on PATH at `~/.local/bin/`, which `codex` should find.
