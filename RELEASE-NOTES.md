@@ -12,6 +12,7 @@
 | Cross-host distribution | INSTALL.md ships per-host config sections (Claude Desktop, Codex CLI). Each host wires to the same MCP server over local stdio. |
 | Homebrew tap | `brew install ai-project-brain/project-brain/project-brain-mcp`. Prebuilt bottles for macOS 14 (Sonoma) and macOS 15 (Sequoia) on Apple Silicon — ~30 second install. |
 | Shape B distribution refactor | Claude Code plugin is a thin manifest that registers the MCP server. Slash commands surface via MCP prompt auto-discovery — no more parallel maintenance of plugin commands + MCP tools. |
+| Project-root resolution | Four-tier chain by confidence: `arg` > host-context env (`COWORK_WORKSPACE_FOLDER` / `CODEX_PROJECT_ROOT` / `CLAUDE_PROJECT_ROOT`) > `PROJECT_BRAIN_HOME` > cwd (git root if in a repo, else cwd itself). Linked-worktree → main-worktree redirect so Codex worktree mode persists the brain in the real project. Cache removed; `~` expanded in env values. |
 | macOS realpath compat | `record-artifact.sh` and `review-thread.sh` no longer use GNU `--relative-to=`. Fixes silent failures on BSD realpath. |
 
 ### Install

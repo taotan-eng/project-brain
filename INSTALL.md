@@ -182,7 +182,9 @@ Note: a pin overrides per-project resolution — Codex will use this brain even 
 
 #### Codex worktrees
 
-Codex creates a git worktree for its session when working inside a git repo. That requires a `main` branch — if your repo's default branch is `master` or has no commits yet, Codex's worktree step fails with `fatal: invalid reference: main` before project-brain is even reached. Either work in a non-git directory (Codex runs in place), or ensure the repo has a committed `main` branch (`git branch -m master main`, or make an initial commit). This is a Codex requirement, not a project-brain one.
+Codex creates a git worktree for its session when working inside a git repo — this requires the repo to have a `main` branch (if it's `master` or has no commits, Codex's worktree step fails with `fatal: invalid reference: main` before project-brain is reached; that's a Codex requirement — `git branch -m master main`, or make an initial commit).
+
+Once Codex is in its worktree, **project-brain resolves the brain to your real project (the main worktree), not the ephemeral worktree** — so threads and decisions persist across sessions and branches, exactly as if you'd run in local mode. No special configuration needed.
 
 ### If you prefer not to use Homebrew
 
