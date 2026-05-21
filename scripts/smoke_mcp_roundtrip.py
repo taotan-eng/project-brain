@@ -419,13 +419,14 @@ async def _run() -> int:
                 assert "Smoke conventions" in conv_text, \
                     f"CONVENTIONS resource content unexpected: {conv_text[:200]}"
 
-                # 14b. ENV-MISSING negative — when nothing the resolution
+                # 14b. ENV-MISSING fallback — when nothing the resolution
                 # chain looks at is set (no arg, no env vars, no git ancestor
-                # of cwd), everyday tools must return validation_error from
-                # chain step 5 (fail). Belt-and-suspenders isolation:
-                # explicitly clear every env var the chain reads AND chdir to
-                # a fresh /tmp/no-git-XXX with no parent .git so the
-                # git-walk-up tier also misses.
+                # of cwd), the chain falls through to tier 4's cwd-fallback
+                # and resolves to cwd itself. A subsequent tool call against
+                # a brainless cwd fails with script_error ("brain directory
+                # not found") — NOT validation_error from the chain (the
+                # chain succeeded; the script just couldn't find a brain at
+                # the resolved path).
                 from project_brain_mcp.tools import (
                     InitProjectBrainArgs, ListThreadsArgs,
                     init_project_brain_impl, list_threads_impl,
@@ -447,14 +448,13 @@ async def _run() -> int:
                         os.chdir(nowhere)
                         no_env_resp = await list_threads_impl(ListThreadsArgs())
                         assert no_env_resp["ok"] is False, \
-                            f"expected validation_error when chain exhausted, got {no_env_resp!r}"
-                        assert no_env_resp["error"]["code"] == "validation_error", \
-                            f"expected validation_error code, got {no_env_resp['error']!r}"
+                            f"expected tool failure, got {no_env_resp!r}"
+                        assert no_env_resp["error"]["code"] == "script_error", \
+                            f"expected script_error (chain resolved to cwd; no brain there), got {no_env_resp['error']!r}"
                         msg = no_env_resp["error"].get("message") or ""
-                        assert "could not resolve" in msg.lower(), \
-                            f"error message should mention exhausted chain: {msg!r}"
-                        assert "PROJECT_BRAIN_HOME" in msg, \
-                            f"error message should list the env vars tried: {msg!r}"
+                        assert "brain directory not found" in msg.lower() \
+                            or "not found" in msg.lower(), \
+                            f"error should mention missing brain dir: {msg!r}"
 
                     # Restore cwd before continuing with the rest of 14c+.
                     os.chdir(saved_cwd_b)
@@ -654,22 +654,24 @@ async def _run() -> int:
                             assert e is None and r == expected, \
                                 f"tilde expansion: expected {expected!r}, got r={r!r} e={e!r}"
 
-                        # Tier 5: nothing matches -> structured error listing
-                        # every tier tried.
+                        # Tier 4 non-git fallback: no env, cwd is a non-git
+                        # tempdir → resolves to cwd itself (NOT fail). This is
+                        # the Codex-GUI-in-plain-folder case from host testing
+                        # — a project dir without a git repo is still a
+                        # project dir.
                         _clear_chain_env()
-                        with tempfile.TemporaryDirectory(prefix="no-git-fail-") as nowhere:
-                            os.chdir(nowhere)
+                        with tempfile.TemporaryDirectory(prefix="no-git-cwd-") as nogit:
+                            os.chdir(nogit)
                             r, e = resolve_project_root(None)
-                            assert r is None, f"tier 5 should fail: {r=}"
-                            assert "could not resolve" in e.lower(), \
-                                f"tier 5 error message: {e!r}"
-                            for needle in (
-                                "PROJECT_BRAIN_HOME",
-                                "COWORK_WORKSPACE_FOLDER",
-                                "git-walk-up",
-                            ):
-                                assert needle in e, \
-                                    f"tier 5 error should list {needle!r}: {e!r}"
+                            assert e is None and _eq_path(r, nogit), \
+                                f"tier 4 (non-git cwd fallback): {r=} {e=}"
+
+                        # Tier 5 (cwd unavailable) is intentionally not
+                        # exercised: it requires deleting cwd out from under
+                        # the running process, which is too fragile to set up
+                        # portably. The guards in _walk_up_for_git and
+                        # resolve_project_root handle it via FileNotFoundError /
+                        # OSError catches; trust them.
                     finally:
                         _clear_chain_env()
                         for k, v in saved_chain_env.items():

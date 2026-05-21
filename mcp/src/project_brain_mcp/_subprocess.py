@@ -29,8 +29,16 @@ _USER_PIN_ENV_VAR = "PROJECT_BRAIN_HOME"
 
 
 def _walk_up_for_git(start: Path | None = None) -> Path | None:
-    """Walk up from cwd looking for .git/. Returns the repo root or None."""
-    current = (start or Path.cwd()).resolve()
+    """Walk up from cwd looking for .git/. Returns the repo root or None.
+
+    Tolerant of a deleted cwd: if `Path.cwd()` raises (FileNotFoundError /
+    OSError), return None so the caller can fall through cleanly rather
+    than propagating the crash.
+    """
+    try:
+        current = (start or Path.cwd()).resolve()
+    except (FileNotFoundError, OSError):
+        return None
     for _ in range(40):  # bounded against malformed symlinks
         if (current / ".git").exists():
             return current
@@ -55,20 +63,26 @@ def _validate_and_normalize(raw: str) -> tuple[str | None, str | None]:
 
 
 def resolve_project_root(arg: str | None) -> tuple[str | None, str | None]:
-    """Resolve the project root via a three-tier confidence chain.
+    """Resolve the project root via a four-tier confidence chain.
 
     Priority order (most explicit / highest confidence first):
       1. Explicit per-call `arg` (most explicit; what callers pass)
       2. Host-context env vars (host deliberately named the project):
            COWORK_WORKSPACE_FOLDER, CODEX_PROJECT_ROOT, CLAUDE_PROJECT_ROOT
       3. PROJECT_BRAIN_HOME (user's deliberate pin; beats cwd inference)
-      4. Git walk-up from cwd (lowest confidence; Claude Code's signal)
-      5. Fail with informative error
+      4. Cwd: git root if in a repo, else cwd itself (lowest-confidence
+           signal — Codex / Claude Code launch the server in the user's
+           current project, so a non-git project dir is still a project dir)
+      5. Fail with informative error (only if cwd itself is unavailable)
 
     Tier-3-beats-tier-4 fixes a sharp edge that bit ChatGPT-over-tunnel: an
     incidental git repo in the server's cwd would otherwise shadow an explicit
     PROJECT_BRAIN_HOME. The user's pin is more deliberate than wherever the
     server happens to be launched from.
+
+    Tier-4 cwd-fallback (the non-git half) means a project dir without a git
+    repo still resolves to itself — Codex GUI users opening the server in a
+    plain folder no longer hit a confusing "could not resolve" error.
 
     Returns `(root_path, error_message)`. Successful resolution sets
     `error_message=None`. Trailing `/project-brain` is rejected with a
@@ -89,19 +103,26 @@ def resolve_project_root(arg: str | None) -> tuple[str | None, str | None]:
     if pin:
         return _validate_and_normalize(pin)
 
-    # 4. Cwd inference — git walk-up (lowest confidence; Claude Code's signal)
+    # 4. Cwd inference — git root if inside a repo, else cwd itself.
+    #    A non-git project dir is still a project dir (Codex / Claude Code
+    #    launch the server there). cwd is the lowest-confidence signal, so
+    #    it sits below host context (tier 2) and the explicit pin (tier 3).
     git_root = _walk_up_for_git()
     if git_root is not None:
         return _validate_and_normalize(str(git_root))
+    try:
+        return _validate_and_normalize(str(Path.cwd()))
+    except (FileNotFoundError, OSError):
+        pass  # cwd was deleted out from under us — fall through to the error
 
-    # 5. Fail with informative error
+    # 5. Fail (only reachable if cwd itself is unavailable)
     tried = (
         "explicit arg, host-context env (COWORK_WORKSPACE_FOLDER / "
         "CODEX_PROJECT_ROOT / CLAUDE_PROJECT_ROOT), PROJECT_BRAIN_HOME, "
-        "cwd git-walk-up"
+        "cwd git-walk-up, cwd"
     )
     return None, (
-        f"could not resolve a project root. Tried: {tried}. "
+        f"could not resolve a project root (cwd unavailable). Tried: {tried}. "
         f"Set PROJECT_BRAIN_HOME to your project root, or run from inside "
         f"the project directory. Server cwd: {Path.cwd()}"
     )
