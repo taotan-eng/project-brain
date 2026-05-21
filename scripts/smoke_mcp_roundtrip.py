@@ -607,6 +607,10 @@ async def _run() -> int:
                                 f"tier 3 (pin) should beat tier 4 (cwd git-walk-up): {r=} {e=}"
 
                         # Tier 4 fallback: cwd git-walk-up when no env set.
+                        # The bare-mkdir .git won't satisfy `git worktree list`,
+                        # so the linked-worktree redirect helper returns None
+                        # and tier 4 falls back to the gitroot path — exactly
+                        # the behavior we want for a non-worktree repo.
                         _clear_chain_env()
                         with tempfile.TemporaryDirectory() as gitroot:
                             (Path(gitroot) / ".git").mkdir()
@@ -616,6 +620,46 @@ async def _run() -> int:
                             r, e = resolve_project_root(None)
                             assert e is None and _eq_path(r, gitroot), \
                                 f"tier 4 (cwd git-walk-up fallback): {r=} {e=}"
+
+                        # Linked-worktree → main-worktree redirect: when cwd
+                        # is inside a linked git worktree (e.g. Codex's
+                        # session worktree), tier 4 must resolve to the MAIN
+                        # worktree, not the linked one — otherwise a brain
+                        # created in an ephemeral worktree silently vanishes
+                        # when the worktree is discarded.
+                        _clear_chain_env()
+                        import subprocess as _sp
+                        with tempfile.TemporaryDirectory(prefix="wt-test-") as base:
+                            main = Path(base) / "main"
+                            linked = Path(base) / "linked"
+                            main.mkdir()
+                            _git_env = {
+                                **os.environ,
+                                "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t",
+                                "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@t",
+                            }
+                            _sp.run(["git", "init", "-q", str(main)], check=True)
+                            _sp.run(["git", "-C", str(main), "commit",
+                                     "--allow-empty", "-q", "-m", "init"],
+                                    check=True, env=_git_env)
+                            _sp.run(["git", "-C", str(main), "worktree", "add",
+                                     "-q", str(linked)],
+                                    check=True, env=_git_env)
+                            os.chdir(linked)
+                            r, e = resolve_project_root(None)
+                            # macOS: tempfile lives under /var which is a
+                            # symlink to /private/var. Compare realpaths so the
+                            # symlink doesn't flip the assertion.
+                            assert e is None, \
+                                f"linked-worktree redirect: unexpected error {e=}"
+                            assert os.path.realpath(r) == os.path.realpath(str(main)), \
+                                f"linked-worktree redirect: expected realpath({main!s}), got {r!r}"
+                            # And the main worktree itself still resolves to
+                            # main (the redirect is a no-op when already there).
+                            os.chdir(main)
+                            r2, e2 = resolve_project_root(None)
+                            assert e2 is None and os.path.realpath(r2) == os.path.realpath(str(main)), \
+                                f"main worktree unchanged: {r2=} {e2=}"
 
                         # Host-context env-var coverage: each of the three
                         # host-context vars wins in turn when nothing higher

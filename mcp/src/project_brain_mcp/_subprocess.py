@@ -48,6 +48,32 @@ def _walk_up_for_git(start: Path | None = None) -> Path | None:
     return None
 
 
+def _main_worktree_root(start: Path) -> Path | None:
+    """If `start` is inside a git worktree, return the MAIN worktree root.
+
+    A project-brain is project-global — it belongs at the real project root,
+    shared across branches/worktrees, NOT inside an ephemeral linked worktree
+    (e.g. Codex's ~/.codex/worktrees/...). `git worktree list --porcelain`
+    lists the main worktree first, so its first `worktree` entry is the root
+    we want. Returns None on any failure; the caller falls back to `start`.
+    """
+    try:
+        out = subprocess.run(
+            ["git", "-C", str(start), "worktree", "list", "--porcelain"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+    except (subprocess.SubprocessError, OSError):
+        return None
+    if out.returncode != 0:
+        return None
+    for line in out.stdout.splitlines():
+        if line.startswith("worktree "):
+            return Path(line[len("worktree "):].strip())  # first entry = main worktree
+    return None
+
+
 def _validate_and_normalize(raw: str) -> tuple[str | None, str | None]:
     """Expand `~`, reject trailing `/project-brain`, normalize trailing slash."""
     expanded = os.path.expanduser(raw)
@@ -84,6 +110,13 @@ def resolve_project_root(arg: str | None) -> tuple[str | None, str | None]:
     repo still resolves to itself — Codex GUI users opening the server in a
     plain folder no longer hit a confusing "could not resolve" error.
 
+    Tier-4 linked-worktree redirect: when cwd is inside a linked git worktree
+    (e.g. Codex's session worktree at ~/.codex/worktrees/...), resolution
+    redirects to the MAIN worktree root so the brain lives in the real
+    project — threads and decisions persist across sessions and branches
+    rather than vanishing with the ephemeral worktree. Explicit tiers (1-3)
+    are NOT redirected; only tier-4 cwd inference does this.
+
     Returns `(root_path, error_message)`. Successful resolution sets
     `error_message=None`. Trailing `/project-brain` is rejected with a
     helpful hint. `~` in env values is expanded to `$HOME`.
@@ -107,9 +140,13 @@ def resolve_project_root(arg: str | None) -> tuple[str | None, str | None]:
     #    A non-git project dir is still a project dir (Codex / Claude Code
     #    launch the server there). cwd is the lowest-confidence signal, so
     #    it sits below host context (tier 2) and the explicit pin (tier 3).
+    #    If the git root is a linked worktree (e.g. Codex's session worktree),
+    #    redirect to the MAIN worktree so the brain lands in the real project,
+    #    not an ephemeral sandbox that gets discarded.
     git_root = _walk_up_for_git()
     if git_root is not None:
-        return _validate_and_normalize(str(git_root))
+        main_root = _main_worktree_root(git_root)
+        return _validate_and_normalize(str(main_root or git_root))
     try:
         return _validate_and_normalize(str(Path.cwd()))
     except (FileNotFoundError, OSError):
