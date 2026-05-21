@@ -14,16 +14,18 @@ from pathlib import Path
 from typing import Any
 
 
-_PROJECT_ROOT_CACHE = Path.home() / ".config" / "project-brain" / "last-used-root.txt"
-
-# Env-var names consulted in priority order. Mirrors verify_tree.config's
-# _HOST_ENV_PROBES so Layer-1 and Layer-2 agree on the source set.
-_ROOT_ENV_VARS = (
-    "PROJECT_BRAIN_HOME",        # explicit MCP config env (chat apps)
+# Host-context env vars: the host (Cowork, Codex CLI, Claude Code) deliberately
+# named the current project. Higher confidence than a user pin — if the host
+# says "this is the project," trust it over a global PROJECT_BRAIN_HOME.
+_HOST_CONTEXT_ENV_VARS = (
     "COWORK_WORKSPACE_FOLDER",   # Cowork sets at session start
-    "CODEX_PROJECT_ROOT",        # OpenAI Codex CLI
-    "CLAUDE_PROJECT_ROOT",       # Claude Code CLI
+    "CODEX_PROJECT_ROOT",        # OpenAI Codex CLI (if it sets it)
+    "CLAUDE_PROJECT_ROOT",       # Claude Code CLI (if it sets it; cwd-based today)
 )
+
+# User pin: a deliberate global default the user set in their MCP config.
+# Beats cwd inference (lower confidence) but yields to host context (higher).
+_USER_PIN_ENV_VAR = "PROJECT_BRAIN_HOME"
 
 
 def _walk_up_for_git(start: Path | None = None) -> Path | None:
@@ -38,89 +40,70 @@ def _walk_up_for_git(start: Path | None = None) -> Path | None:
     return None
 
 
-def _read_root_cache() -> str | None:
-    """Best-effort read of the last-used-root cache. Returns None on any failure."""
-    try:
-        return _PROJECT_ROOT_CACHE.read_text(encoding="utf-8").strip() or None
-    except FileNotFoundError:
-        return None
-    except Exception:
-        return None  # corrupt cache; ignore
-
-
-def _write_root_cache(root: str) -> None:
-    """Best-effort write of the last-used-root cache. Failures don't propagate."""
-    try:
-        _PROJECT_ROOT_CACHE.parent.mkdir(parents=True, exist_ok=True)
-        _PROJECT_ROOT_CACHE.write_text(root.rstrip("/").rstrip("\\") + "\n", encoding="utf-8")
-    except Exception:
-        pass
-
-
-def _validate_and_normalize(path: str) -> tuple[str | None, str | None]:
-    """Reject trailing `/project-brain` (Path C); normalize trailing slash."""
-    normalized = path.rstrip("/").rstrip("\\")
+def _validate_and_normalize(raw: str) -> tuple[str | None, str | None]:
+    """Expand `~`, reject trailing `/project-brain`, normalize trailing slash."""
+    expanded = os.path.expanduser(raw)
+    normalized = expanded.rstrip("/").rstrip("\\")
     if normalized.endswith("/project-brain") or normalized.endswith("\\project-brain"):
         suggested = normalized[: -len("/project-brain")]
         return None, (
             f"PROJECT_BRAIN_HOME (or target) should be the parent dir, not the brain itself. "
-            f"You passed {path!r}; try {suggested!r} instead. "
+            f"You passed {raw!r}; try {suggested!r} instead. "
             f"The brain at <root>/project-brain/ will be created or used automatically."
         )
     return normalized, None
 
 
 def resolve_project_root(arg: str | None) -> tuple[str | None, str | None]:
-    """Resolve the project root via the documented 8-step chain.
+    """Resolve the project root via a three-tier confidence chain.
 
-    Priority order (filesystem signals first, env vars second, cache last):
-      1. Explicit `arg`
-      2. Nearest .git/ ancestor of cwd (filesystem signal)
-      3. $PROJECT_BRAIN_HOME (MCP config / chat-app)
-      4. $COWORK_WORKSPACE_FOLDER (Cowork session env)
-      5. $CODEX_PROJECT_ROOT (OpenAI Codex CLI)
-      6. $CLAUDE_PROJECT_ROOT (Claude Code CLI)
-      7. Last-used cache at ~/.config/project-brain/last-used-root.txt
-      8. Structured error listing every source tried
+    Priority order (most explicit / highest confidence first):
+      1. Explicit per-call `arg` (most explicit; what callers pass)
+      2. Host-context env vars (host deliberately named the project):
+           COWORK_WORKSPACE_FOLDER, CODEX_PROJECT_ROOT, CLAUDE_PROJECT_ROOT
+      3. PROJECT_BRAIN_HOME (user's deliberate pin; beats cwd inference)
+      4. Git walk-up from cwd (lowest confidence; Claude Code's signal)
+      5. Fail with informative error
 
-    Filesystem-first rationale: if the server is launched from inside a git
-    repo, that repo is almost certainly the project the user means right now
-    — CLI hosts (Claude Code, Codex) rely on this. Chat apps that pin to a
-    single brain via $PROJECT_BRAIN_HOME still resolve correctly because the
-    cwd they launch from (the OS app dir / $HOME) isn't inside any git repo,
-    so step 2 misses cleanly and step 3 takes over.
+    Tier-3-beats-tier-4 fixes a sharp edge that bit ChatGPT-over-tunnel: an
+    incidental git repo in the server's cwd would otherwise shadow an explicit
+    PROJECT_BRAIN_HOME. The user's pin is more deliberate than wherever the
+    server happens to be launched from.
 
     Returns `(root_path, error_message)`. Successful resolution sets
     `error_message=None`. Trailing `/project-brain` is rejected with a
-    helpful hint (Path C).
+    helpful hint. `~` in env values is expanded to `$HOME`.
     """
     # 1. Explicit arg wins
     if arg and arg.strip():
         return _validate_and_normalize(arg.strip())
 
-    # 2. Git walk-up from cwd (filesystem signal)
-    git_root = _walk_up_for_git()
-    if git_root is not None:
-        return _validate_and_normalize(str(git_root))
-
-    # 3-6. Env vars in priority order
-    for env_var in _ROOT_ENV_VARS:
+    # 2. Reliable host context (host explicitly named the project)
+    for env_var in _HOST_CONTEXT_ENV_VARS:
         value = os.environ.get(env_var, "").strip()
         if value:
             return _validate_and_normalize(value)
 
-    # 7. Last-used cache (consulted only when nothing else matches)
-    cached = _read_root_cache()
-    if cached:
-        return _validate_and_normalize(cached)
+    # 3. User pin (deliberate; beats cwd inference)
+    pin = os.environ.get(_USER_PIN_ENV_VAR, "").strip()
+    if pin:
+        return _validate_and_normalize(pin)
 
-    # 8. Fail with informative error listing every source tried
-    tried = "arg, git-walk-up, " + ", ".join(_ROOT_ENV_VARS) + ", last-used-cache"
+    # 4. Cwd inference — git walk-up (lowest confidence; Claude Code's signal)
+    git_root = _walk_up_for_git()
+    if git_root is not None:
+        return _validate_and_normalize(str(git_root))
+
+    # 5. Fail with informative error
+    tried = (
+        "explicit arg, host-context env (COWORK_WORKSPACE_FOLDER / "
+        "CODEX_PROJECT_ROOT / CLAUDE_PROJECT_ROOT), PROJECT_BRAIN_HOME, "
+        "cwd git-walk-up"
+    )
     return None, (
-        f"could not resolve project root — tried: {tried}. "
-        f"Set PROJECT_BRAIN_HOME in your MCP config's env block, or run from "
-        f"inside a git repo (cwd's .git/ ancestor is the resolved root). "
-        f"Server cwd: {Path.cwd()}"
+        f"could not resolve a project root. Tried: {tried}. "
+        f"Set PROJECT_BRAIN_HOME to your project root, or run from inside "
+        f"the project directory. Server cwd: {Path.cwd()}"
     )
 
 

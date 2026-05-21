@@ -246,13 +246,12 @@ _materialize_context = wrap_validation(MaterializeContextArgs, materialize_conte
     name="init_project_brain",
     description=(
         "Scaffold project-brain into the resolved project root. Takes no "
-        "arguments — the server resolves the target via the documented "
-        "chain (git walk-up from cwd, then PROJECT_BRAIN_HOME / "
-        "COWORK_WORKSPACE_FOLDER / CODEX_PROJECT_ROOT / CLAUDE_PROJECT_ROOT, "
-        "then the last-used cache) and derives the primary-project alias "
-        "as kebab-case of the resolved root's leaf. Errors with "
-        "validation_error if a brain already exists at the resolved "
-        "location — fix the filesystem and retry."
+        "arguments — the server resolves the target via the three-tier "
+        "chain (host context: COWORK_WORKSPACE_FOLDER / CODEX_PROJECT_ROOT "
+        "/ CLAUDE_PROJECT_ROOT → PROJECT_BRAIN_HOME → git walk-up from cwd) "
+        "and derives the primary-project alias as kebab-case of the resolved "
+        "root's leaf. Errors with validation_error if a brain already exists "
+        "at the resolved location — fix the filesystem and retry."
     ),
 )
 async def init_project_brain() -> dict[str, Any]:
