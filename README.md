@@ -20,7 +20,7 @@ The pack lives in `project-brain/` at your project root — visible, tracked, re
 5. [A day in the life](#a-day-in-the-life)
 6. [Data model](#data-model)
 7. [Cross-cutting: context, validation, and fleet queries](#cross-cutting-context-validation-and-fleet-queries)
-8. [Configuration (rc4+)](#configuration-rc4)
+8. [Configuration](#configuration)
 9. [Extending the pack](#extending-the-pack)
 10. [Runtime portability](#runtime-portability)
 11. [Security](#security)
@@ -298,9 +298,9 @@ Five skills are invokable from anywhere and own no per-artifact lifecycle state:
 
 ---
 
-## Configuration (rc4+)
+## Configuration
 
-### 1:1 binding with the host environment (rc4)
+### 1:1 binding with the host environment
 
 Before reading about the config files, know the basic operating model: **one project-brain corresponds to exactly one host-environment project.** The "host" is whichever agent runtime you're in — Cowork (the selected workspace folder), Codex (the bound project root), Claude Code (cwd at session start), or a plain shell (cwd / explicit `--brain=<path>`). The brain lives at `<host-project-root>/project-brain/`. Switching projects is a host-level operation: open a different Cowork session, start Codex in a different directory, or `cd` before invoking skills. There is no `switch-project` skill, no "active project" pointer, no session-scoped state in project-brain. See CONVENTIONS § 1.1 for the full contract.
 
@@ -327,7 +327,7 @@ transcript_logging: on         # on (default) | off
 
 - `terse` (default) — one acknowledgement line + `Done.` No preamble, no tool-output echo.
 - `normal` — structured summary of what changed, no conversational framing.
-- `verbose` — full narration (pre-rc4 behavior). Use for debugging.
+- `verbose` — full narration. Use for debugging.
 
 **Transcript logging** controls whether mutating skills append verbatim human-LLM transcripts to `<thread>/transcript.md` (the curated summary stays in `thread.md`). Default `on`. Set `off` in config.yaml for brain-wide disable, or `transcript: off` in a thread's frontmatter for per-thread disable.
 
