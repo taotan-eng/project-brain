@@ -138,74 +138,9 @@ For pipx / pip / uvx installs, replace the `"command"` and `"args"` fields with 
 
 For a `pipx install project-brain-mcp` install, use `"command": "project-brain-mcp", "args": []` (same as the Homebrew form) — pipx puts the binary on PATH at `~/.local/bin/`, which Claude Desktop should find.
 
-## ChatGPT Desktop config
+## ChatGPT Desktop
 
-ChatGPT Desktop supports MCP via **custom connectors** in Developer Mode. Available on **Plus, Pro, Team, and Enterprise tiers**; the Free tier doesn't expose MCP custom connectors.
-
-### Step 1 — Install + start the SSE service
-
-ChatGPT only accepts remote HTTP/SSE endpoints; it can't launch local stdio servers. `project-brain-mcp`'s `--http` flag serves the same MCP server over HTTP/SSE on `127.0.0.1:8787` — that URL is what ChatGPT connects to.
-
-One-time install + start:
-
-```bash
-brew install ai-project-brain/project-brain/project-brain-mcp
-brew services start project-brain-mcp
-```
-
-The first command installs the server (already in place if you set up Claude Desktop or the Codex CLI via brew; it's a no-op then). The second starts the SSE daemon as a managed background service via launchd. The service:
-
-- Auto-starts at login (managed by launchd via `brew services`).
-- Restarts automatically if it crashes (`KeepAlive`).
-- Logs to `/opt/homebrew/var/log/project-brain-mcp.log` (and `.error.log` for stderr).
-- Inherits `PROJECT_BRAIN_HOME` from your shell environment — set it in your shell profile (e.g., `~/.zshrc`) BEFORE `brew services start`, or run `brew services restart project-brain-mcp` after editing.
-
-#### Verify the service is running
-
-```bash
-brew services list | grep project-brain-mcp
-# Expect: project-brain-mcp  started  ...
-```
-
-If status is `error`, check the log:
-
-```bash
-tail -30 /opt/homebrew/var/log/project-brain-mcp.error.log
-```
-
-#### Stopping / restarting / reloading config
-
-```bash
-brew services stop project-brain-mcp
-brew services restart project-brain-mcp   # picks up new env vars from your shell profile
-```
-
-#### Port override
-
-Default port is 8787. If another service uses that port, set `PROJECT_BRAIN_SSE_PORT` in your shell profile:
-
-```bash
-export PROJECT_BRAIN_SSE_PORT=8788
-```
-
-Then `brew services restart project-brain-mcp` and adjust the ChatGPT connector URL to match (Step 2 below).
-
-### Step 2 — Add the connector in ChatGPT
-
-In ChatGPT Desktop:
-
-1. Open **Settings → Connectors**.
-2. Click **Advanced** and toggle **Developer mode** on.
-3. Back in Connectors, click **Add custom connector**.
-4. Enter the SSE URL: `http://localhost:8787/sse`.
-5. Authenticate (if prompted; localhost connectors typically don't require auth).
-6. Save.
-
-The connector is loaded immediately — no app restart needed, unlike Claude Desktop. The brew service started in Step 1 keeps running in the background (managed by launchd); you don't need a terminal window open for it.
-
-### Tier note
-
-ChatGPT Plus and above ship with custom connectors. **ChatGPT Free does not** — there's no UI surface to add an MCP server on the Free tier. If you're on Free, your options are (a) upgrade, (b) use Claude Desktop Free (which DOES support MCP via `mcpServers` config), or (c) run project-brain via the Codex CLI (see below).
+Deferred to v1.1. ChatGPT's MCP connectors run from OpenAI's infrastructure and can't reach a self-hosted MCP server on localhost; a public tunnel (ngrok / Cloudflare Tunnel) is required, which is out of scope for v1.0's target audience. The open question for v1.1 is whether any ChatGPT tier supports local-connector access without a tunnel. See the project's v1.1 roadmap.
 
 ## OpenAI Codex CLI config
 
@@ -224,12 +159,9 @@ Add this block to `~/.codex/config.toml` (TOML format, NOT JSON — different fr
 [mcp_servers.project-brain]
 command = "project-brain-mcp"
 args = []
-
-[mcp_servers.project-brain.env]
-PROJECT_BRAIN_HOME = "/absolute/path/to/your/project-root"
 ```
 
-Same `PROJECT_BRAIN_HOME` semantics as Claude Desktop: it names the **project root** (NOT the `project-brain/` subdir — the server appends `/project-brain` automatically).
+Codex resolves the brain from your current project directory — open Codex in the project you want, and project-brain uses that directory's `project-brain/` subdir. No `PROJECT_BRAIN_HOME` pin is needed in the default config; the server's cwd-fallback resolution does the right thing.
 
 Alternatively, add via the CLI without manual TOML editing:
 
@@ -237,19 +169,31 @@ Alternatively, add via the CLI without manual TOML editing:
 codex mcp add project-brain -- project-brain-mcp
 ```
 
-Then edit `~/.codex/config.toml` to add the `[mcp_servers.project-brain.env]` block with `PROJECT_BRAIN_HOME`, or set the env var globally in your shell profile.
+#### Advanced: pin a specific brain
+
+To make Codex always use one brain regardless of which project you open it in, add an env block:
+
+```toml
+[mcp_servers.project-brain.env]
+PROJECT_BRAIN_HOME = "/absolute/path/to/your/project-root"
+```
+
+Note: a pin overrides per-project resolution — Codex will use this brain even when you open it in a different project. Same `PROJECT_BRAIN_HOME` semantics as Claude Desktop: it names the **project root** (NOT the `project-brain/` subdir — the server appends `/project-brain` automatically).
+
+#### Codex worktrees
+
+Codex creates a git worktree for its session when working inside a git repo — this requires the repo to have a `main` branch (if it's `master` or has no commits, Codex's worktree step fails with `fatal: invalid reference: main` before project-brain is reached; that's a Codex requirement — `git branch -m master main`, or make an initial commit).
+
+Once Codex is in its worktree, **project-brain resolves the brain to your real project (the main worktree), not the ephemeral worktree** — so threads and decisions persist across sessions and branches, exactly as if you'd run in local mode. No special configuration needed.
 
 ### If you prefer not to use Homebrew
 
-For pipx / uvx installs, replace `command = "project-brain-mcp"` with the appropriate invocation. The `[mcp_servers.project-brain.env]` block is unchanged.
+For pipx / uvx installs, replace `command = "project-brain-mcp"` with the appropriate invocation:
 
 ```toml
 [mcp_servers.project-brain]
 command = "uvx"
 args = ["project-brain-mcp"]
-
-[mcp_servers.project-brain.env]
-PROJECT_BRAIN_HOME = "/absolute/path/to/your/project-root"
 ```
 
 For a `pipx install project-brain-mcp` install, the original `command = "project-brain-mcp"` form (no args) works as-is — pipx puts the binary on PATH at `~/.local/bin/`, which `codex` should find.

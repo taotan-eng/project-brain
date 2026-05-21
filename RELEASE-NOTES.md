@@ -2,17 +2,17 @@
 
 ## v1.0.0 — 2026-05-19
 
-**Cross-harness MCP release.** Project-brain ships as an MCP server pack that works across Claude Desktop, Claude Code, Codex CLI, Codex GUI, and ChatGPT Desktop. macOS install via Homebrew tap with prebuilt bottles (~30s install). Linux/Windows install via pipx.
+**Cross-harness MCP release.** Project-brain ships as an MCP server pack that works across Claude Desktop, Claude Code, OpenAI Codex CLI, and OpenAI Codex GUI. macOS install via Homebrew tap with prebuilt bottles (~30s install). Linux/Windows install via pipx.
 
 ### What's new since rc4
 
 | Shift | What changed |
 |---|---|
 | MCP server | New `project-brain-mcp` binary — 17 tools, 17 auto-discovered prompts, 3 resources. Single source of truth for skill behavior across every host. |
-| Cross-host distribution | INSTALL.md ships per-host config sections (Claude Desktop, Codex CLI, ChatGPT Desktop). Each host wires to the same MCP server. |
+| Cross-host distribution | INSTALL.md ships per-host config sections (Claude Desktop, Codex CLI). Each host wires to the same MCP server over local stdio. |
 | Homebrew tap | `brew install ai-project-brain/project-brain/project-brain-mcp`. Prebuilt bottles for macOS 14 (Sonoma) and macOS 15 (Sequoia) on Apple Silicon — ~30 second install. |
-| Native SSE transport | `project-brain-mcp --http` serves the same server over HTTP/SSE for ChatGPT Desktop. `brew services start project-brain-mcp` runs it as a managed launchd daemon. |
 | Shape B distribution refactor | Claude Code plugin is a thin manifest that registers the MCP server. Slash commands surface via MCP prompt auto-discovery — no more parallel maintenance of plugin commands + MCP tools. |
+| Project-root resolution | Four-tier chain by confidence: `arg` > host-context env (`COWORK_WORKSPACE_FOLDER` / `CODEX_PROJECT_ROOT` / `CLAUDE_PROJECT_ROOT`) > `PROJECT_BRAIN_HOME` > cwd (git root if in a repo, else cwd itself). Linked-worktree → main-worktree redirect so Codex worktree mode persists the brain in the real project. Cache removed; `~` expanded in env values. |
 | macOS realpath compat | `record-artifact.sh` and `review-thread.sh` no longer use GNU `--relative-to=`. Fixes silent failures on BSD realpath. |
 
 ### Install
@@ -41,7 +41,7 @@ If you were running rc4 (April-era Claude-Code-plugin-only pack):
 
 ### Known gaps
 
-- **ChatGPT Desktop end-to-end demo pending.** Install path documented; transport verified by tap CI (`curl http://localhost:8787/sse` → HTTP 200 + `text/event-stream`). End-user demo against ChatGPT Plus's custom-connector UI lands as a post-release PR (see `chatgpt-desktop-validation` in the maintainer's meta-brain).
+- **ChatGPT Desktop deferred to v1.1.** ChatGPT's MCP connectors run from OpenAI's cloud and can't reach a localhost MCP server; a public tunnel (ngrok / Cloudflare Tunnel) is required, out of scope for the v1.0 audience. Tracked for v1.1 — see the project's meta-brain (`chatgpt-desktop-validation` thread, parked).
 - **Linux/Windows native bottles deferred to v1.1.** Linux + Windows users use pipx today.
 - **Homebrew-core submission deferred to v1.1.** Today's install uses the `ai-project-brain/project-brain` tap.
 

@@ -13,7 +13,6 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from ._response import err, from_subprocess_result, ok
 from ._subprocess import (
-    _write_root_cache,
     find_pack_root,
     resolve_brain_dir,
     resolve_project_root,
@@ -36,8 +35,9 @@ def _kebab_from_leaf(leaf: str) -> str:
 
 _BRAIN_FIELD_DESC = (
     "Project root path — the directory whose project-brain/ subdir holds the brain. "
-    "If omitted, the server auto-detects via the resolution chain (env vars, git "
-    "walk-up, last-used cache). See INSTALL.md § 'Resolution chain' for the full order."
+    "If omitted, the server auto-detects via the resolution chain: host-context env "
+    "(COWORK_WORKSPACE_FOLDER / CODEX_PROJECT_ROOT / CLAUDE_PROJECT_ROOT) → "
+    "PROJECT_BRAIN_HOME → git walk-up from cwd. See INSTALL.md § 'Resolution chain'."
 )
 _BRAIN_RESOLVE_HINT = (
     "set PROJECT_BRAIN_HOME in your MCP config's env block (the project root, NOT the "
@@ -552,15 +552,7 @@ async def init_project_brain_impl(args: InitProjectBrainArgs) -> dict[str, Any]:
     # TODO@example.com placeholder. Force omitted -> script's own
     # existing-brain guard provides defense in depth on top of step 2.
     argv = [f"--home={root}", f"--alias={primary_project}", f"--title={primary_project}"]
-    response = from_subprocess_result(run_script("init-brain.sh", argv))
-
-    # Cache the resolved root on successful init so future calls hit chain
-    # step 7 even when no env var is set. Best-effort write; failures don't
-    # propagate.
-    if response.get("ok"):
-        _write_root_cache(root)
-
-    return response
+    return from_subprocess_result(run_script("init-brain.sh", argv))
 
 
 async def promote_thread_to_tree_impl(args: PromoteThreadToTreeArgs) -> dict[str, Any]:

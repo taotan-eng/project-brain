@@ -14,21 +14,31 @@ from pathlib import Path
 from typing import Any
 
 
-_PROJECT_ROOT_CACHE = Path.home() / ".config" / "project-brain" / "last-used-root.txt"
-
-# Env-var names consulted in priority order. Mirrors verify_tree.config's
-# _HOST_ENV_PROBES so Layer-1 and Layer-2 agree on the source set.
-_ROOT_ENV_VARS = (
-    "PROJECT_BRAIN_HOME",        # explicit MCP config env (chat apps)
+# Host-context env vars: the host (Cowork, Codex CLI, Claude Code) deliberately
+# named the current project. Higher confidence than a user pin — if the host
+# says "this is the project," trust it over a global PROJECT_BRAIN_HOME.
+_HOST_CONTEXT_ENV_VARS = (
     "COWORK_WORKSPACE_FOLDER",   # Cowork sets at session start
-    "CODEX_PROJECT_ROOT",        # OpenAI Codex CLI
-    "CLAUDE_PROJECT_ROOT",       # Claude Code CLI
+    "CODEX_PROJECT_ROOT",        # OpenAI Codex CLI (if it sets it)
+    "CLAUDE_PROJECT_ROOT",       # Claude Code CLI (if it sets it; cwd-based today)
 )
+
+# User pin: a deliberate global default the user set in their MCP config.
+# Beats cwd inference (lower confidence) but yields to host context (higher).
+_USER_PIN_ENV_VAR = "PROJECT_BRAIN_HOME"
 
 
 def _walk_up_for_git(start: Path | None = None) -> Path | None:
-    """Walk up from cwd looking for .git/. Returns the repo root or None."""
-    current = (start or Path.cwd()).resolve()
+    """Walk up from cwd looking for .git/. Returns the repo root or None.
+
+    Tolerant of a deleted cwd: if `Path.cwd()` raises (FileNotFoundError /
+    OSError), return None so the caller can fall through cleanly rather
+    than propagating the crash.
+    """
+    try:
+        current = (start or Path.cwd()).resolve()
+    except (FileNotFoundError, OSError):
+        return None
     for _ in range(40):  # bounded against malformed symlinks
         if (current / ".git").exists():
             return current
@@ -38,89 +48,120 @@ def _walk_up_for_git(start: Path | None = None) -> Path | None:
     return None
 
 
-def _read_root_cache() -> str | None:
-    """Best-effort read of the last-used-root cache. Returns None on any failure."""
+def _main_worktree_root(start: Path) -> Path | None:
+    """If `start` is inside a git worktree, return the MAIN worktree root.
+
+    A project-brain is project-global — it belongs at the real project root,
+    shared across branches/worktrees, NOT inside an ephemeral linked worktree
+    (e.g. Codex's ~/.codex/worktrees/...). `git worktree list --porcelain`
+    lists the main worktree first, so its first `worktree` entry is the root
+    we want. Returns None on any failure; the caller falls back to `start`.
+    """
     try:
-        return _PROJECT_ROOT_CACHE.read_text(encoding="utf-8").strip() or None
-    except FileNotFoundError:
+        out = subprocess.run(
+            ["git", "-C", str(start), "worktree", "list", "--porcelain"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+    except (subprocess.SubprocessError, OSError):
         return None
-    except Exception:
-        return None  # corrupt cache; ignore
+    if out.returncode != 0:
+        return None
+    for line in out.stdout.splitlines():
+        if line.startswith("worktree "):
+            return Path(line[len("worktree "):].strip())  # first entry = main worktree
+    return None
 
 
-def _write_root_cache(root: str) -> None:
-    """Best-effort write of the last-used-root cache. Failures don't propagate."""
-    try:
-        _PROJECT_ROOT_CACHE.parent.mkdir(parents=True, exist_ok=True)
-        _PROJECT_ROOT_CACHE.write_text(root.rstrip("/").rstrip("\\") + "\n", encoding="utf-8")
-    except Exception:
-        pass
-
-
-def _validate_and_normalize(path: str) -> tuple[str | None, str | None]:
-    """Reject trailing `/project-brain` (Path C); normalize trailing slash."""
-    normalized = path.rstrip("/").rstrip("\\")
+def _validate_and_normalize(raw: str) -> tuple[str | None, str | None]:
+    """Expand `~`, reject trailing `/project-brain`, normalize trailing slash."""
+    expanded = os.path.expanduser(raw)
+    normalized = expanded.rstrip("/").rstrip("\\")
     if normalized.endswith("/project-brain") or normalized.endswith("\\project-brain"):
         suggested = normalized[: -len("/project-brain")]
         return None, (
             f"PROJECT_BRAIN_HOME (or target) should be the parent dir, not the brain itself. "
-            f"You passed {path!r}; try {suggested!r} instead. "
+            f"You passed {raw!r}; try {suggested!r} instead. "
             f"The brain at <root>/project-brain/ will be created or used automatically."
         )
     return normalized, None
 
 
 def resolve_project_root(arg: str | None) -> tuple[str | None, str | None]:
-    """Resolve the project root via the documented 8-step chain.
+    """Resolve the project root via a four-tier confidence chain.
 
-    Priority order (filesystem signals first, env vars second, cache last):
-      1. Explicit `arg`
-      2. Nearest .git/ ancestor of cwd (filesystem signal)
-      3. $PROJECT_BRAIN_HOME (MCP config / chat-app)
-      4. $COWORK_WORKSPACE_FOLDER (Cowork session env)
-      5. $CODEX_PROJECT_ROOT (OpenAI Codex CLI)
-      6. $CLAUDE_PROJECT_ROOT (Claude Code CLI)
-      7. Last-used cache at ~/.config/project-brain/last-used-root.txt
-      8. Structured error listing every source tried
+    Priority order (most explicit / highest confidence first):
+      1. Explicit per-call `arg` (most explicit; what callers pass)
+      2. Host-context env vars (host deliberately named the project):
+           COWORK_WORKSPACE_FOLDER, CODEX_PROJECT_ROOT, CLAUDE_PROJECT_ROOT
+      3. PROJECT_BRAIN_HOME (user's deliberate pin; beats cwd inference)
+      4. Cwd: git root if in a repo, else cwd itself (lowest-confidence
+           signal — Codex / Claude Code launch the server in the user's
+           current project, so a non-git project dir is still a project dir)
+      5. Fail with informative error (only if cwd itself is unavailable)
 
-    Filesystem-first rationale: if the server is launched from inside a git
-    repo, that repo is almost certainly the project the user means right now
-    — CLI hosts (Claude Code, Codex) rely on this. Chat apps that pin to a
-    single brain via $PROJECT_BRAIN_HOME still resolve correctly because the
-    cwd they launch from (the OS app dir / $HOME) isn't inside any git repo,
-    so step 2 misses cleanly and step 3 takes over.
+    Tier-3-beats-tier-4 fixes a sharp edge that bit ChatGPT-over-tunnel: an
+    incidental git repo in the server's cwd would otherwise shadow an explicit
+    PROJECT_BRAIN_HOME. The user's pin is more deliberate than wherever the
+    server happens to be launched from.
+
+    Tier-4 cwd-fallback (the non-git half) means a project dir without a git
+    repo still resolves to itself — Codex GUI users opening the server in a
+    plain folder no longer hit a confusing "could not resolve" error.
+
+    Tier-4 linked-worktree redirect: when cwd is inside a linked git worktree
+    (e.g. Codex's session worktree at ~/.codex/worktrees/...), resolution
+    redirects to the MAIN worktree root so the brain lives in the real
+    project — threads and decisions persist across sessions and branches
+    rather than vanishing with the ephemeral worktree. Explicit tiers (1-3)
+    are NOT redirected; only tier-4 cwd inference does this.
 
     Returns `(root_path, error_message)`. Successful resolution sets
     `error_message=None`. Trailing `/project-brain` is rejected with a
-    helpful hint (Path C).
+    helpful hint. `~` in env values is expanded to `$HOME`.
     """
     # 1. Explicit arg wins
     if arg and arg.strip():
         return _validate_and_normalize(arg.strip())
 
-    # 2. Git walk-up from cwd (filesystem signal)
-    git_root = _walk_up_for_git()
-    if git_root is not None:
-        return _validate_and_normalize(str(git_root))
-
-    # 3-6. Env vars in priority order
-    for env_var in _ROOT_ENV_VARS:
+    # 2. Reliable host context (host explicitly named the project)
+    for env_var in _HOST_CONTEXT_ENV_VARS:
         value = os.environ.get(env_var, "").strip()
         if value:
             return _validate_and_normalize(value)
 
-    # 7. Last-used cache (consulted only when nothing else matches)
-    cached = _read_root_cache()
-    if cached:
-        return _validate_and_normalize(cached)
+    # 3. User pin (deliberate; beats cwd inference)
+    pin = os.environ.get(_USER_PIN_ENV_VAR, "").strip()
+    if pin:
+        return _validate_and_normalize(pin)
 
-    # 8. Fail with informative error listing every source tried
-    tried = "arg, git-walk-up, " + ", ".join(_ROOT_ENV_VARS) + ", last-used-cache"
+    # 4. Cwd inference — git root if inside a repo, else cwd itself.
+    #    A non-git project dir is still a project dir (Codex / Claude Code
+    #    launch the server there). cwd is the lowest-confidence signal, so
+    #    it sits below host context (tier 2) and the explicit pin (tier 3).
+    #    If the git root is a linked worktree (e.g. Codex's session worktree),
+    #    redirect to the MAIN worktree so the brain lands in the real project,
+    #    not an ephemeral sandbox that gets discarded.
+    git_root = _walk_up_for_git()
+    if git_root is not None:
+        main_root = _main_worktree_root(git_root)
+        return _validate_and_normalize(str(main_root or git_root))
+    try:
+        return _validate_and_normalize(str(Path.cwd()))
+    except (FileNotFoundError, OSError):
+        pass  # cwd was deleted out from under us — fall through to the error
+
+    # 5. Fail (only reachable if cwd itself is unavailable)
+    tried = (
+        "explicit arg, host-context env (COWORK_WORKSPACE_FOLDER / "
+        "CODEX_PROJECT_ROOT / CLAUDE_PROJECT_ROOT), PROJECT_BRAIN_HOME, "
+        "cwd git-walk-up, cwd"
+    )
     return None, (
-        f"could not resolve project root — tried: {tried}. "
-        f"Set PROJECT_BRAIN_HOME in your MCP config's env block, or run from "
-        f"inside a git repo (cwd's .git/ ancestor is the resolved root). "
-        f"Server cwd: {Path.cwd()}"
+        f"could not resolve a project root (cwd unavailable). Tried: {tried}. "
+        f"Set PROJECT_BRAIN_HOME to your project root, or run from inside "
+        f"the project directory. Server cwd: {Path.cwd()}"
     )
 
 

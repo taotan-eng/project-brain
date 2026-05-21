@@ -419,18 +419,18 @@ async def _run() -> int:
                 assert "Smoke conventions" in conv_text, \
                     f"CONVENTIONS resource content unexpected: {conv_text[:200]}"
 
-                # 14b. ENV-MISSING negative — when nothing the resolution
-                # chain looks at is set (no arg, no env vars, no cache, no
-                # git ancestor of cwd), everyday tools must return
-                # validation_error from chain step 8. Belt-and-suspenders
-                # isolation: explicitly clear every env var the chain reads,
-                # unlink the last-used-root cache, AND chdir to a fresh
-                # /tmp/no-git-XXX with no parent .git so step 6 also misses.
+                # 14b. ENV-MISSING fallback — when nothing the resolution
+                # chain looks at is set (no arg, no env vars, no git ancestor
+                # of cwd), the chain falls through to tier 4's cwd-fallback
+                # and resolves to cwd itself. A subsequent tool call against
+                # a brainless cwd fails with script_error ("brain directory
+                # not found") — NOT validation_error from the chain (the
+                # chain succeeded; the script just couldn't find a brain at
+                # the resolved path).
                 from project_brain_mcp.tools import (
                     InitProjectBrainArgs, ListThreadsArgs,
                     init_project_brain_impl, list_threads_impl,
                 )
-                from project_brain_mcp._subprocess import _PROJECT_ROOT_CACHE
 
                 _chain_env_vars_b = (
                     "PROJECT_BRAIN_HOME",
@@ -440,54 +440,26 @@ async def _run() -> int:
                 )
                 saved_env_b = {k: os.environ.get(k) for k in _chain_env_vars_b}
                 saved_cwd_b = os.getcwd()
-                saved_cache_b = (
-                    _PROJECT_ROOT_CACHE.read_text() if _PROJECT_ROOT_CACHE.exists() else None
-                )
                 try:
                     for k in _chain_env_vars_b:
                         os.environ.pop(k, None)
-                    _PROJECT_ROOT_CACHE.unlink(missing_ok=True)
 
                     with tempfile.TemporaryDirectory(dir="/tmp", prefix="no-git-") as nowhere:
                         os.chdir(nowhere)
                         no_env_resp = await list_threads_impl(ListThreadsArgs())
                         assert no_env_resp["ok"] is False, \
-                            f"expected validation_error when chain exhausted, got {no_env_resp!r}"
-                        assert no_env_resp["error"]["code"] == "validation_error", \
-                            f"expected validation_error code, got {no_env_resp['error']!r}"
+                            f"expected tool failure, got {no_env_resp!r}"
+                        assert no_env_resp["error"]["code"] == "script_error", \
+                            f"expected script_error (chain resolved to cwd; no brain there), got {no_env_resp['error']!r}"
                         msg = no_env_resp["error"].get("message") or ""
-                        assert "could not resolve" in msg.lower(), \
-                            f"error message should mention exhausted chain: {msg!r}"
-                        assert "PROJECT_BRAIN_HOME" in msg, \
-                            f"error message should list the env vars tried: {msg!r}"
-
-                    # 14b2. CACHE POSITIVE — populate the cache with no env
-                    # set; the chain MUST hit source 7. The resulting tool
-                    # call will likely script_error (the cached path has no
-                    # real brain), but the resolution itself succeeded — the
-                    # important signal is that the error is NOT
-                    # validation_error (which would mean the cache wasn't
-                    # consulted). Guards against future regressions that
-                    # silently drop the cache step.
-                    _PROJECT_ROOT_CACHE.parent.mkdir(parents=True, exist_ok=True)
-                    _PROJECT_ROOT_CACHE.write_text("/tmp/known-cached-root\n")
-                    with tempfile.TemporaryDirectory(dir="/tmp", prefix="no-git-cache-") as nowhere2:
-                        os.chdir(nowhere2)
-                        for k in _chain_env_vars_b:
-                            os.environ.pop(k, None)
-                        cache_resp = await list_threads_impl(ListThreadsArgs())
-                        # Either ok=True (a brain exists there) or script_error
-                        # (resolution succeeded, script failed). NOT validation_error.
-                        ok = cache_resp.get("ok") is True
-                        code = (cache_resp.get("error") or {}).get("code")
-                        assert ok or code == "script_error", \
-                            f"cache source not consulted by chain: {cache_resp!r}"
+                        assert "brain directory not found" in msg.lower() \
+                            or "not found" in msg.lower(), \
+                            f"error should mention missing brain dir: {msg!r}"
 
                     # Restore cwd before continuing with the rest of 14c+.
                     os.chdir(saved_cwd_b)
-                    _PROJECT_ROOT_CACHE.unlink(missing_ok=True)
                 except BaseException:
-                    # Make sure env/cwd/cache are restored even if the new
+                    # Make sure env/cwd are restored even if the new
                     # assertions blow up before reaching the outer finally.
                     for k, v in saved_env_b.items():
                         if v is not None:
@@ -495,11 +467,6 @@ async def _run() -> int:
                         else:
                             os.environ.pop(k, None)
                     os.chdir(saved_cwd_b)
-                    if saved_cache_b is not None:
-                        _PROJECT_ROOT_CACHE.parent.mkdir(parents=True, exist_ok=True)
-                        _PROJECT_ROOT_CACHE.write_text(saved_cache_b)
-                    else:
-                        _PROJECT_ROOT_CACHE.unlink(missing_ok=True)
                     raise
 
                 # Pre-existing 14c+ block continues with `saved_env` (= the
@@ -516,17 +483,15 @@ async def _run() -> int:
                     # 14c. ZERO-ARG INIT — call init with no args at all.
                     # The agent simply says "create project brain"; the server
                     # resolves the target via the chain and derives the alias
-                    # from the resolved root's leaf. chdir into the tempdir
-                    # (non-git) so chain step 2 (git walk-up) misses cleanly
-                    # and step 3 (PROJECT_BRAIN_HOME) wins.
+                    # from the resolved root's leaf. PROJECT_BRAIN_HOME (tier 3)
+                    # wins over cwd git-walk-up (tier 4); we still chdir into
+                    # the same tempdir so the init lands where the test expects.
                     import re as _re
-                    from project_brain_mcp._subprocess import _PROJECT_ROOT_CACHE as _CACHE
                     _saved_cwd_c = os.getcwd()
                     try:
                         with tempfile.TemporaryDirectory(prefix="Test-Brain-", dir="/tmp") as init_env_root:
                             os.environ["PROJECT_BRAIN_HOME"] = init_env_root
                             os.chdir(init_env_root)
-                            _CACHE.unlink(missing_ok=True)  # prevent stale cache hit
                             init_env_resp = await init_project_brain_impl(InitProjectBrainArgs())
                             # Layer-1 init-brain.sh may fail on this host for
                             # unrelated reasons (registry collisions, etc.);
@@ -586,14 +551,12 @@ async def _run() -> int:
                     finally:
                         os.chdir(_saved_cwd_d)
 
-                    # 14e. RESOLUTION CHAIN — assert each link in isolation.
-                    # Saves/restores all env vars + cwd + cache file so the
-                    # rest of the test isn't disturbed.
-                    from project_brain_mcp._subprocess import (
-                        resolve_project_root,
-                        _write_root_cache,
-                        _PROJECT_ROOT_CACHE,
-                    )
+                    # 14e. RESOLUTION CHAIN — three-tier confidence ordering.
+                    # Assertions cover each tier in isolation plus the
+                    # tier-3-beats-tier-4 case that fixes the ChatGPT-cwd-
+                    # shadows-PROJECT_BRAIN_HOME bug. Saves/restores all env
+                    # vars + cwd so the rest of the test isn't disturbed.
+                    from project_brain_mcp._subprocess import resolve_project_root
 
                     chain_env_vars = (
                         "PROJECT_BRAIN_HOME",
@@ -603,9 +566,6 @@ async def _run() -> int:
                     )
                     saved_chain_env = {k: os.environ.get(k) for k in chain_env_vars}
                     saved_cwd = os.getcwd()
-                    saved_cache = (
-                        _PROJECT_ROOT_CACHE.read_text() if _PROJECT_ROOT_CACHE.exists() else None
-                    )
 
                     def _clear_chain_env() -> None:
                         for k in chain_env_vars:
@@ -615,98 +575,153 @@ async def _run() -> int:
                         return Path(a).resolve() == Path(b).resolve()
 
                     try:
-                        # Link 1: explicit arg overrides everything.
+                        # Tier 1: explicit arg overrides everything.
                         _clear_chain_env()
                         os.environ["PROJECT_BRAIN_HOME"] = "/tmp/chain-env"
                         r, e = resolve_project_root("/tmp/chain-explicit")
                         assert e is None and _eq_path(r, "/tmp/chain-explicit"), \
-                            f"chain link 1 (explicit): {r=} {e=}"
+                            f"tier 1 (explicit arg): {r=} {e=}"
 
-                        # Link 2: git walk-up — beats env vars.
+                        # Tier 2 beats Tier 3: host context wins over pin.
+                        _clear_chain_env()
+                        os.environ["COWORK_WORKSPACE_FOLDER"] = "/tmp/chain-cwf"
+                        os.environ["PROJECT_BRAIN_HOME"] = "/tmp/chain-pbh-loses"
+                        r, e = resolve_project_root(None)
+                        assert e is None and _eq_path(r, "/tmp/chain-cwf"), \
+                            f"tier 2 (host context) should beat tier 3 (pin): {r=} {e=}"
+
+                        # Tier 3 beats Tier 4: PROJECT_BRAIN_HOME beats cwd
+                        # git-walk-up. THIS IS THE REGRESSION GUARD for the
+                        # ChatGPT-cwd-shadows-pin bug. Old ordering put
+                        # git-walk-up at tier 2 and would have returned
+                        # `gitroot`; new ordering must return `/tmp/chain-pbh`.
                         _clear_chain_env()
                         with tempfile.TemporaryDirectory() as gitroot:
                             (Path(gitroot) / ".git").mkdir()
                             subdir = Path(gitroot) / "subdir"
                             subdir.mkdir()
                             os.chdir(subdir)
-                            _PROJECT_ROOT_CACHE.unlink(missing_ok=True)
-                            # Set an env var to verify git walk-up still wins
-                            os.environ["PROJECT_BRAIN_HOME"] = "/tmp/chain-env-loses"
-                            r, e = resolve_project_root(None)
-                            assert e is None and _eq_path(r, gitroot), \
-                                f"chain link 2 (git walk-up beats env): {r=} {e=}"
-
-                        # Links 3-6: env vars when no git walk-up matches.
-                        # chdir into a non-git tempdir so step 2 misses cleanly.
-                        with tempfile.TemporaryDirectory(prefix="no-git-chain-") as nogit:
-                            os.chdir(nogit)
-                            _PROJECT_ROOT_CACHE.unlink(missing_ok=True)
-
-                            # Link 3: PROJECT_BRAIN_HOME.
-                            _clear_chain_env()
                             os.environ["PROJECT_BRAIN_HOME"] = "/tmp/chain-pbh"
                             r, e = resolve_project_root(None)
                             assert e is None and _eq_path(r, "/tmp/chain-pbh"), \
-                                f"chain link 3 (PROJECT_BRAIN_HOME): {r=} {e=}"
+                                f"tier 3 (pin) should beat tier 4 (cwd git-walk-up): {r=} {e=}"
 
-                            # Link 4: COWORK_WORKSPACE_FOLDER when PBH unset.
-                            _clear_chain_env()
-                            os.environ["COWORK_WORKSPACE_FOLDER"] = "/tmp/chain-cwf"
+                        # Tier 4 fallback: cwd git-walk-up when no env set.
+                        # The bare-mkdir .git won't satisfy `git worktree list`,
+                        # so the linked-worktree redirect helper returns None
+                        # and tier 4 falls back to the gitroot path — exactly
+                        # the behavior we want for a non-worktree repo.
+                        _clear_chain_env()
+                        with tempfile.TemporaryDirectory() as gitroot:
+                            (Path(gitroot) / ".git").mkdir()
+                            subdir = Path(gitroot) / "subdir"
+                            subdir.mkdir()
+                            os.chdir(subdir)
                             r, e = resolve_project_root(None)
-                            assert e is None and _eq_path(r, "/tmp/chain-cwf"), \
-                                f"chain link 4 (COWORK_WORKSPACE_FOLDER): {r=} {e=}"
+                            assert e is None and _eq_path(r, gitroot), \
+                                f"tier 4 (cwd git-walk-up fallback): {r=} {e=}"
 
-                            # Link 5: CODEX_PROJECT_ROOT.
+                        # Linked-worktree → main-worktree redirect: when cwd
+                        # is inside a linked git worktree (e.g. Codex's
+                        # session worktree), tier 4 must resolve to the MAIN
+                        # worktree, not the linked one — otherwise a brain
+                        # created in an ephemeral worktree silently vanishes
+                        # when the worktree is discarded.
+                        _clear_chain_env()
+                        import subprocess as _sp
+                        with tempfile.TemporaryDirectory(prefix="wt-test-") as base:
+                            main = Path(base) / "main"
+                            linked = Path(base) / "linked"
+                            main.mkdir()
+                            _git_env = {
+                                **os.environ,
+                                "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t",
+                                "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@t",
+                            }
+                            _sp.run(["git", "init", "-q", str(main)], check=True)
+                            _sp.run(["git", "-C", str(main), "commit",
+                                     "--allow-empty", "-q", "-m", "init"],
+                                    check=True, env=_git_env)
+                            _sp.run(["git", "-C", str(main), "worktree", "add",
+                                     "-q", str(linked)],
+                                    check=True, env=_git_env)
+                            os.chdir(linked)
+                            r, e = resolve_project_root(None)
+                            # macOS: tempfile lives under /var which is a
+                            # symlink to /private/var. Compare realpaths so the
+                            # symlink doesn't flip the assertion.
+                            assert e is None, \
+                                f"linked-worktree redirect: unexpected error {e=}"
+                            assert os.path.realpath(r) == os.path.realpath(str(main)), \
+                                f"linked-worktree redirect: expected realpath({main!s}), got {r!r}"
+                            # And the main worktree itself still resolves to
+                            # main (the redirect is a no-op when already there).
+                            os.chdir(main)
+                            r2, e2 = resolve_project_root(None)
+                            assert e2 is None and os.path.realpath(r2) == os.path.realpath(str(main)), \
+                                f"main worktree unchanged: {r2=} {e2=}"
+
+                        # Host-context env-var coverage: each of the three
+                        # host-context vars wins in turn when nothing higher
+                        # is set. chdir into a non-git tempdir so tier 4
+                        # misses cleanly.
+                        with tempfile.TemporaryDirectory(prefix="no-git-chain-") as nogit:
+                            os.chdir(nogit)
+
+                            _clear_chain_env()
+                            os.environ["COWORK_WORKSPACE_FOLDER"] = "/tmp/chain-cwf2"
+                            r, e = resolve_project_root(None)
+                            assert e is None and _eq_path(r, "/tmp/chain-cwf2"), \
+                                f"tier 2 (COWORK_WORKSPACE_FOLDER): {r=} {e=}"
+
                             _clear_chain_env()
                             os.environ["CODEX_PROJECT_ROOT"] = "/tmp/chain-codex"
                             r, e = resolve_project_root(None)
                             assert e is None and _eq_path(r, "/tmp/chain-codex"), \
-                                f"chain link 5 (CODEX_PROJECT_ROOT): {r=} {e=}"
+                                f"tier 2 (CODEX_PROJECT_ROOT): {r=} {e=}"
 
-                            # Link 6: CLAUDE_PROJECT_ROOT.
                             _clear_chain_env()
                             os.environ["CLAUDE_PROJECT_ROOT"] = "/tmp/chain-cc"
                             r, e = resolve_project_root(None)
                             assert e is None and _eq_path(r, "/tmp/chain-cc"), \
-                                f"chain link 6 (CLAUDE_PROJECT_ROOT): {r=} {e=}"
+                                f"tier 2 (CLAUDE_PROJECT_ROOT): {r=} {e=}"
 
-                        # Link 7: last-used cache when no env and no git.
+                        # Tilde expansion: PROJECT_BRAIN_HOME=~/foo must
+                        # resolve to $HOME/foo (chdir to non-git first so
+                        # tier 4 doesn't shadow).
                         _clear_chain_env()
-                        with tempfile.TemporaryDirectory(prefix="no-git-cache-") as nowhere:
-                            os.chdir(nowhere)
-                            _write_root_cache("/tmp/chain-cached")
+                        with tempfile.TemporaryDirectory(prefix="no-git-tilde-") as nogit:
+                            os.chdir(nogit)
+                            os.environ["PROJECT_BRAIN_HOME"] = "~/chain-tilde"
                             r, e = resolve_project_root(None)
-                            assert e is None and _eq_path(r, "/tmp/chain-cached"), \
-                                f"chain link 7 (cache): {r=} {e=}"
+                            expected = str(Path.home() / "chain-tilde")
+                            assert e is None and r == expected, \
+                                f"tilde expansion: expected {expected!r}, got r={r!r} e={e!r}"
 
-                        # Link 8: nothing matches -> structured error listing
-                        # every source tried.
+                        # Tier 4 non-git fallback: no env, cwd is a non-git
+                        # tempdir → resolves to cwd itself (NOT fail). This is
+                        # the Codex-GUI-in-plain-folder case from host testing
+                        # — a project dir without a git repo is still a
+                        # project dir.
                         _clear_chain_env()
-                        _PROJECT_ROOT_CACHE.unlink(missing_ok=True)
-                        with tempfile.TemporaryDirectory(prefix="no-git-fail-") as nowhere:
-                            os.chdir(nowhere)
+                        with tempfile.TemporaryDirectory(prefix="no-git-cwd-") as nogit:
+                            os.chdir(nogit)
                             r, e = resolve_project_root(None)
-                            assert r is None, f"chain link 8 should fail: {r=}"
-                            assert "could not resolve" in e.lower(), \
-                                f"chain link 8 error message: {e!r}"
-                            for needle in (
-                                "PROJECT_BRAIN_HOME",
-                                "COWORK_WORKSPACE_FOLDER",
-                                "git-walk-up",
-                            ):
-                                assert needle in e, \
-                                    f"chain link 8 error should list {needle!r}: {e!r}"
+                            assert e is None and _eq_path(r, nogit), \
+                                f"tier 4 (non-git cwd fallback): {r=} {e=}"
+
+                        # Tier 5 (cwd unavailable) is intentionally not
+                        # exercised: it requires deleting cwd out from under
+                        # the running process, which is too fragile to set up
+                        # portably. The guards in _walk_up_for_git and
+                        # resolve_project_root handle it via FileNotFoundError /
+                        # OSError catches; trust them.
                     finally:
                         _clear_chain_env()
                         for k, v in saved_chain_env.items():
                             if v is not None:
                                 os.environ[k] = v
                         os.chdir(saved_cwd)
-                        if saved_cache is not None:
-                            _PROJECT_ROOT_CACHE.parent.mkdir(parents=True, exist_ok=True)
-                            _PROJECT_ROOT_CACHE.write_text(saved_cache)
-                        else:
-                            _PROJECT_ROOT_CACHE.unlink(missing_ok=True)
                 finally:
                     if saved_env is not None:
                         os.environ["PROJECT_BRAIN_HOME"] = saved_env
